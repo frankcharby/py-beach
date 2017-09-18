@@ -30,10 +30,9 @@ from beach.prefixtree import PrefixDict
 import msgpack
 import hashlib
 
-# Review this, but imp is deprecated and this should be easier to debug!
-#import imp
-import tempfile
-from importlib import machinery
+# Review this, but imp is deprecated
+import imp
+#from importlib import machinery
 import syslog
 import traceback
 
@@ -67,22 +66,18 @@ def loadModuleFrom( path, realm ):
         name = '%s_%s' % ( name, modHash )
         mod = sys.modules.get( name, None )
         if mod is None:
-            #mod = imp.new_module( name )
-            f = tempfile.NamedTemporaryFile("wb")
-            f.write(content)
-            f.flush()
+            mod = imp.new_module( name )
             try:
-                mod = machinery.SourceFileLoader(name, f.name).load_module()
+                mod.__dict__[ '_beach_path' ] = path
+                mod.__dict__[ '__file__' ] = path
+                mod.__dict__[ '_beach_realm' ] = realm
+                exec( content, mod.__dict__ )
+                sys.modules[ name ] = mod
             except:
                 syslog.syslog( name )
                 syslog.syslog( traceback.format_exc() )
                 raise Exception("Import error!")
             f.close()
-            mod.__dict__[ '_beach_path' ] = path
-            mod.__dict__[ '__file__' ] = path
-            mod.__dict__[ '_beach_realm' ] = realm
-            #exec( content, mod.__dict__ )
-            #sys.modules[ name ] = mod
     
     return mod
 
