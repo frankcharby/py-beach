@@ -29,7 +29,12 @@ from beach.prefixtree import PrefixDict
 
 import msgpack
 import hashlib
-import imp
+
+# Review this, but imp is deprecated and this should be easier to debug!
+#import imp
+import tempfile
+from importlib import machinery
+
 import urllib.request, urllib.error, urllib.parse
 import sys
 import os
@@ -60,12 +65,17 @@ def loadModuleFrom( path, realm ):
         name = '%s_%s' % ( name, modHash )
         mod = sys.modules.get( name, None )
         if mod is None:
-            mod = imp.new_module( name )
+            #mod = imp.new_module( name )
+            f = tempfile.NamedTemporaryFile("wb")
+            f.write(content)
+            f.flush()
+            mod = machinery.SourceFileLoader(name, f.name).load_module()
+            f.close()
             mod.__dict__[ '_beach_path' ] = path
             mod.__dict__[ '__file__' ] = path
             mod.__dict__[ '_beach_realm' ] = realm
-            exec( content, mod.__dict__ )
-            sys.modules[ name ] = mod
+            #exec( content, mod.__dict__ )
+            #sys.modules[ name ] = mod
     
     return mod
 

@@ -257,7 +257,7 @@ class Patrol ( object ):
     def loadFromUrl( self, url, isMonitorForUpdates = False ):
         patrolContent, patrolFilePath = self._getPatrolFromUrl( url )
         self._patrolUrl = url
-        self._patrolHash = hashlib.sha256( patrolContent ).hexdigest()
+        self._patrolHash = hashlib.sha256( patrolContent.encode('utf-8') ).hexdigest()
         exec( patrolContent, { 'Patrol' : self.monitor,
                                '__file__' : patrolFilePath } )
         if isMonitorForUpdates and not self._isMonitored:
@@ -270,13 +270,13 @@ class Patrol ( object ):
                 patrolContent, patrolFilePath = self._getPatrolFromUrl( self._patrolUrl )
             except:
                 return
-            if self._patrolHash == hashlib.sha256( patrolContent ).hexdigest():
+            if self._patrolHash == hashlib.sha256( patrolContent.encode('utf-8') ).hexdigest():
                 return
             self._mutex.acquire( blocking = True )
             self._entries = OrderedDict()
             self._watch = {}
             self._patrolUrl = url
-            self._patrolHash = hashlib.sha256( patrolContent ).hexdigest()
+            self._patrolHash = hashlib.sha256( patrolContent.encode('utf-8') ).hexdigest()
             exec( patrolContent, { 'Patrol' : self.monitor,
                                    '__file__' : patrolFilePath } )
             self._mutex.release()
