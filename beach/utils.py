@@ -77,7 +77,6 @@ def loadModuleFrom( path, realm ):
                 syslog.syslog( name )
                 syslog.syslog( traceback.format_exc() )
                 raise Exception("Import error!")
-            f.close()
     
     return mod
 
