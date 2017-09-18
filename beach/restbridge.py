@@ -45,7 +45,7 @@ ENABLE_GET = False
 ###############################################################################
 def sanitizeJson( o, summarized = False ):
     if type( o ) is dict:
-        for k, v in o.iteritems():
+        for k, v in o.items():
             o[ k ] = sanitizeJson( v, summarized = summarized )
     elif type( o ) is list or type( o ) is tuple:
         o = [ sanitizeJson( x, summarized = summarized ) for x in o ]
@@ -146,7 +146,7 @@ class Bridge:
             timeout = float( timeout )
 
         req = {}
-        for k, v in params.iteritems():
+        for k, v in params.items():
             if not k.startswith( '_' ):
                 req[ k ] = v
 
@@ -158,7 +158,7 @@ class Bridge:
         if cacheKey in handle_cache:
             handle = handle_cache[ cacheKey ]
         else:
-            print( "New handle: %s / %s / %s" % ( category, timeout, ident ) )
+            print(( "New handle: %s / %s / %s" % ( category, timeout, ident ) ))
             handle_cache[ cacheKey ] = beach.getActorHandle( category, ident = ident )
             handle = handle_cache[ cacheKey ]
 

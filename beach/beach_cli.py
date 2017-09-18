@@ -31,7 +31,7 @@ import traceback
 from beach.beach_api import Beach
 
 def eprint( msg ):
-    print >> sys.stderr, msg
+    print(msg, file=sys.stderr)
 
 try:
     import M2Crypto
@@ -81,7 +81,7 @@ class BeachShell ( cmd.Cmd ):
         pass
 
     def printOut( self, data ):
-        print( json.dumps( data, indent = 4 ) )
+        print(( json.dumps( data, indent = 4 ) ))
 
     @report_errors
     def do_gen_key( self, s ):
@@ -471,7 +471,7 @@ if __name__ == '__main__':
                         if not resp.isSuccess:
                             print( resp )
                         else:
-                            print( json.dumps( resp.data, indent = 4 ) )
+                            print(( json.dumps( resp.data, indent = 4 ) ))
                 h.close()
                 beach.close()
             else:
@@ -479,5 +479,5 @@ if __name__ == '__main__':
                     print( resp )
                     sys.exit( 1 )
                 else:
-                    print( json.dumps( resp.data, indent = 4 ) )
+                    print(( json.dumps( resp.data, indent = 4 ) ))
                     sys.exit( 0 )

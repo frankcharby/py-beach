@@ -27,7 +27,7 @@ import datetime
 import time
 import json
 from functools import wraps
-from sets import Set
+#from sets import Set
 import gevent
 
 ###############################################################################
@@ -85,17 +85,20 @@ def updateMetrics():
     info[ 'load' ] = beach.getLoadInfo()
     metadata = {}
     mtd = beach.getAllNodeMetadata()
-    for nodeMtd in mtd.values():
+    for nodeMtd in list(mtd.values()):
         if nodeMtd is False: continue
-        for uid, actorMtd in nodeMtd.get( 'data', {} ).get( 'mtd', {} ).iteritems():
+        for uid, actorMtd in nodeMtd.get( 'data', {} ).get( 'mtd', {} ).items():
             metadata[ uid ] = '%s/%s' % ( actorMtd[ 'realm' ], actorMtd[ 'name' ] )
     info[ 'actor_mtd' ] = metadata
 
-    unique_actors = Set()
+    unique_actors = set()
     n_realms = 0
     n_cats = 0
+    
     if info[ 'dir' ] is not False:
         for realm, categories in info[ 'dir' ][ 'realms' ].items():
+            print(realm)
+            print(categories)
             n_realms += 1
             for cat_name, actors in categories.items():
                 n_cats += 1

@@ -1,1 +1,1 @@
-import dashboard
+from . import dashboard

@@ -143,10 +143,10 @@ class ActorHost ( object ):
         
         self.log( "Exiting, stopping all actors." )
         
-        for actor in self.actors.values():
+        for actor in list(self.actors.values()):
             actor.stop()
         
-        gevent.joinall( self.actors.values() )
+        gevent.joinall( list(self.actors.values()) )
         self.log( "All Actors exiting, exiting." )
     
     @handleExceptions
@@ -253,7 +253,7 @@ class ActorHost ( object ):
                             z.send( errorMessage( 'actor not found' ) )
                 elif 'get_load_info' == action:
                     info = {}
-                    for uid, actor in self.actors.items():
+                    for uid, actor in list(self.actors.items()):
                         info[ uid ] = ( actor._n_free_handlers, actor._n_concurrent, actor.getPending(), actor._qps, actor._q_avg )
                     z.send( successMessage( data = info ) )
                 elif 'is_drainable' == action:
@@ -271,7 +271,7 @@ class ActorHost ( object ):
         z = self.hostOpsSocket.getChild()
         while not self.stopEvent.wait( 0 ):
             #self.log( "Culling actors that stopped of themselves" )
-            for uid, actor in self.actors.items():
+            for uid, actor in list(self.actors.items()):
                 if not actor.isRunning():
                     exc = actor.getLastError()
                     if exc is not None:
@@ -286,7 +286,7 @@ class ActorHost ( object ):
     def isDrainable( self ):
         if 0 == len( self.actors ):
             return False
-        return all( x._is_drainable for x in self.actors.itervalues() )
+        return all( x._is_drainable for x in self.actors.values() )
 
     def _drainActor( self, actor ):
         isDrained = True
@@ -308,7 +308,7 @@ class ActorHost ( object ):
         if self.isDrainable():
             self.isOpen = False
             self.log( "Draining..." )
-            drained = parallelExec( self._drainActor, self.actors.values() )
+            drained = parallelExec( self._drainActor, list(self.actors.values()) )
             self.log( "Drained." )
             gevent.spawn_later( 2, _stopAllActors )
             return True

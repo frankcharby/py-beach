@@ -1,0 +1,1816 @@
+diff -Naur a/beach/actor.py b/beach/actor.py
+--- a/beach/actor.py	2017-09-18 08:31:46.536855000 -0400
++++ b/beach/actor.py	2017-09-15 08:42:03.300749000 -0400
+@@ -33,9 +33,9 @@
+ import hashlib
+ import inspect
+ import sys
+-import urllib2
++import urllib.request, urllib.error, urllib.parse
+ import copy
+-import Queue
++import queue
+ from types import ModuleType
+ import syslog
+ 
+@@ -122,7 +122,7 @@
+ 
+         try:
+             mod = loadModuleFrom( fileName, realm )
+-        except urllib2.URLError:
++        except urllib.error.URLError:
+             if os.path.isfile( fileName ):
+                 raise
+             fileName = '%s/%s/__init__.py' % ( initPath, libName )
+@@ -135,7 +135,7 @@
+         if className is not None and className == '*':
+             loadModule = mod
+             mod = {}
+-            for name, val in loadModule.__dict__.iteritems():
++            for name, val in loadModule.__dict__.items():
+                 if not name.startswith( '_' ) and type( name ) is not ModuleType:
+                     parentGlobals[ name ] = val
+                     mod[ name ] = val
+@@ -170,7 +170,7 @@
+         if fileName.startswith( 'file://' ):
+             fileName = 'file://%s' % os.path.abspath( fileName[ 7 : ] )
+             
+-        hUrl = urllib2.urlopen( fileName )
++        hUrl = urllib.request.urlopen( fileName )
+         ret = hUrl.read()
+         hUrl.close()
+         return ret
+@@ -262,7 +262,7 @@
+             # Initially Actors handle one concurrent request to avoid bad surprises
+             # by users not thinking about concurrency. This can be bumped up by calling
+             # Actor.AddConcurrentHandler()
+-            for i in xrange( self._n_initial_concurrent ):
++            for i in range( self._n_initial_concurrent ):
+                 self.AddConcurrentHandler()
+ 
+             self.stopEvent.wait()
+@@ -690,7 +690,7 @@
+         if newDir is not False:
+             self._endpoints = newDir
+             if 'affinity' != self._mode:
+-                for z_ident, z_url in self._endpoints.items():
++                for z_ident, z_url in list(self._endpoints.items()):
+                     if z_ident not in self._peerSockets:
+                         # Do this in two steps since creating a socket is blocking so not thread safe in gevent.
+                         newSocket = _ZMREQ( z_url, isBind = False, private_key = self._private_key, congestionCB = self._reportCongestion )
+@@ -794,7 +794,7 @@
+                             # is not locked, if it changes, affinity is re-computed without migrating
+                             # any previous affinities. Therefore, I suggest a good cooldown before
+                             # starting to process with affinity after the Actors have been spawned.
+-                            orderedEndpoints  = sorted( self._endpoints.items(),
++                            orderedEndpoints  = sorted( list(self._endpoints.items()),
+                                                         key = lambda x: x.__getitem__( 0 ) )
+                             orderHash = tuple( [ x[ 0 ] for x in orderedEndpoints ] ).__hash__()
+                             if self._affinityOrder is None or self._affinityOrder != orderHash:
+@@ -811,7 +811,7 @@
+                         else:
+                             if 'random' == self._mode:
+                                 try:
+-                                    endpoints = self._endpoints.keys()
++                                    endpoints = list(self._endpoints.keys())
+                                     z_ident = endpoints[ random.randint( 0, len( endpoints ) - 1 ) ]
+                                     z = self._peerSockets[ z_ident ]
+                                 except:
+@@ -894,7 +894,7 @@
+         # Broadcast is inherently very temporal so we assume timeout can be short and without retries.
+         self._initialRefreshDone.wait( timeout = 10 )
+ 
+-        for z_ident, z in self._peerSockets.items():
++        for z_ident, z in list(self._peerSockets.items()):
+             envelope = copy.deepcopy( envelope )
+             envelope[ 'mtd' ][ 'dst' ] = z_ident
+             self._threads.add( gevent.spawn( withLogException( self._accountedSend, actor = self._fromActor ), z, z_ident, envelope, 10 ) )
+@@ -918,7 +918,7 @@
+ 
+         self._initialRefreshDone.wait( timeout = self._timeout )
+ 
+-        toSockets = self._peerSockets.items()
++        toSockets = list(self._peerSockets.items())
+         futureResults = FutureResults( len( toSockets ) )
+         
+         for z_ident, z in toSockets:
+@@ -999,7 +999,7 @@
+                 pass
+             self._fromActor = None
+         self._threads.kill()
+-        for s in self._peerSockets.values():
++        for s in list(self._peerSockets.values()):
+             try:
+                 s.close()
+             except:
+@@ -1134,7 +1134,7 @@
+                                                         ident = self._ident,
+                                                         fromActor = self._fromActor )
+ 
+-            for cat in self._handles.keys():
++            for cat in list(self._handles.keys()):
+                 if cat not in categories:
+                     self._handles[ cat ].close()
+                     del( self._handles[ cat ] )
+@@ -1169,7 +1169,7 @@
+             timeout = self._timeout
+         self._initialRefreshDone.wait( timeout = timeout )
+ 
+-        for h in self._handles.values():
++        for h in list(self._handles.values()):
+             h.shoot( requestType, data, timeout = timeout, key = key, nRetries = nRetries, onFailure = onFailure )
+ 
+     def request( self, requestType, data = {}, timeout = None, key = None, nRetries = None, onFailure = None ):
+@@ -1191,7 +1191,7 @@
+ 
+         futureResults = FutureResults( len( self._handles ) )
+ 
+-        for h in self._handles.values():
++        for h in list(self._handles.values()):
+             gevent.spawn( withLogException( self._handleAsyncRequest, actor = self._fromActor ), futureResults, h, requestType, data = data, timeout = timeout, key = key, nRetries = nRetries, onFailure = onFailure )
+ 
+         return futureResults
+@@ -1213,7 +1213,7 @@
+         '''
+         self._threads.kill()
+         
+-        for h in self._handles.values():
++        for h in list(self._handles.values()):
+             try:
+                 h.close()
+             except:
+@@ -1231,10 +1231,10 @@
+            since a periodic refresh is already at an interval frequent enough for most use.
+         '''
+         self._refreshCats()
+-        for handle in self._handles.values():
++        for handle in list(self._handles.values()):
+             handle._updateDirectory( isForced = True )
+ 
+     def getPending( self ):
+         '''Get the number of pending requests made by this handle group.
+         '''
+-        return [ h.getPending() for h in self._handles.values() ]
+\ No newline at end of file
++        return [ h.getPending() for h in list(self._handles.values()) ]
+\ No newline at end of file
+diff -Naur a/beach/actorhost.py b/beach/actorhost.py
+--- a/beach/actorhost.py	2017-09-18 08:31:46.536855000 -0400
++++ b/beach/actorhost.py	2017-09-15 13:12:03.273751000 -0400
+@@ -143,10 +143,10 @@
+         
+         self.log( "Exiting, stopping all actors." )
+         
+-        for actor in self.actors.values():
++        for actor in list(self.actors.values()):
+             actor.stop()
+         
+-        gevent.joinall( self.actors.values() )
++        gevent.joinall( list(self.actors.values()) )
+         self.log( "All Actors exiting, exiting." )
+     
+     @handleExceptions
+@@ -253,7 +253,7 @@
+                             z.send( errorMessage( 'actor not found' ) )
+                 elif 'get_load_info' == action:
+                     info = {}
+-                    for uid, actor in self.actors.items():
++                    for uid, actor in list(self.actors.items()):
+                         info[ uid ] = ( actor._n_free_handlers, actor._n_concurrent, actor.getPending(), actor._qps, actor._q_avg )
+                     z.send( successMessage( data = info ) )
+                 elif 'is_drainable' == action:
+@@ -271,7 +271,7 @@
+         z = self.hostOpsSocket.getChild()
+         while not self.stopEvent.wait( 0 ):
+             #self.log( "Culling actors that stopped of themselves" )
+-            for uid, actor in self.actors.items():
++            for uid, actor in list(self.actors.items()):
+                 if not actor.isRunning():
+                     exc = actor.getLastError()
+                     if exc is not None:
+@@ -286,7 +286,7 @@
+     def isDrainable( self ):
+         if 0 == len( self.actors ):
+             return False
+-        return all( x._is_drainable for x in self.actors.itervalues() )
++        return all( x._is_drainable for x in self.actors.values() )
+ 
+     def _drainActor( self, actor ):
+         isDrained = True
+@@ -308,7 +308,7 @@
+         if self.isDrainable():
+             self.isOpen = False
+             self.log( "Draining..." )
+-            drained = parallelExec( self._drainActor, self.actors.values() )
++            drained = parallelExec( self._drainActor, list(self.actors.values()) )
+             self.log( "Drained." )
+             gevent.spawn_later( 2, _stopAllActors )
+             return True
+@@ -342,4 +342,4 @@
+     try:
+         host = ActorHost( sys.argv[ 1 ], sys.argv[ 2 ], int( sys.argv[ 3 ] ), sys.argv[ 4 ], sys.argv[ 5 ] )
+     except:
+-        host.logCritical( "Exception: %s" % str( traceback.format_exc() ) )
+\ No newline at end of file
++        host.logCritical( "Exception: %s" % str( traceback.format_exc() ) )
+diff -Naur a/beach/beach_api.py b/beach/beach_api.py
+--- a/beach/beach_api.py	2017-09-18 08:31:46.536855000 -0400
++++ b/beach/beach_api.py	2017-09-17 21:09:10.166273000 -0400
+@@ -18,7 +18,8 @@
+ if 'threading' in sys.modules and 'sphinx' not in sys.modules:
+     import gevent.monkey
+     if 0 == len( gevent.monkey.saved ):
+-        raise Exception('threading module loaded before patching!')
++        pass
++        #raise Exception('threading module loaded before patching!')
+ import gevent.monkey
+ gevent.monkey.patch_all()
+ 
+@@ -41,7 +42,7 @@
+ from beach.utils import _getPublicInterfaces
+ 
+ def eprint( msg ):
+-    print >> sys.stderr, msg
++    print(msg, file=sys.stderr)
+ 
+ class Beach ( object ):
+ 
+@@ -74,11 +75,13 @@
+             key_path = os.path.join( os.path.dirname( os.path.abspath( configFile ) ), self._private_key )
+             with open( key_path, 'r' ) as f:
+                 self._private_key = f.read()
+-                print( "Using shared key: %s" % key_path )
++                print(( "Using shared key: %s" % key_path ))
+ 
+         self._admin_token = self._configFile.get( 'admin_token', None )
+ 
+         if 0 == len( self._seedNodes ):
++            # FIX - review
++            mainIfaceIp = None
+             if 'interface' not in self._configFile:
+                 defaultInterfaces = _getPublicInterfaces()
+                 mainIfaceIp = None
+@@ -86,7 +89,9 @@
+                     interface = defaultInterfaces.pop()
+                     mainIfaceIp = _getIpv4ForIface( interface )
+             if mainIfaceIp is None:
+-                self._log( "Failed to use interface %s." % self.interface )
++                # FIX - where is this?
++                #self._log( "Failed to use interface %s." % self.interface )
++                pass
+             self._seedNodes.append( mainIfaceIp )
+ 
+         for s in self._seedNodes:
+@@ -97,9 +102,9 @@
+ 
+         self._isInited.wait( 5 )
+ 
+-        ActorHandle._setHostDirInfo( [ 'tcp://%s:%d' % ( x, self._opsPort ) for x in self._nodes.keys() ],
++        ActorHandle._setHostDirInfo( [ 'tcp://%s:%d' % ( x, self._opsPort ) for x in list(self._nodes.keys()) ],
+                                      private_key = self._private_key )
+-        ActorHandleGroup._setHostDirInfo( [ 'tcp://%s:%d' % ( x, self._opsPort ) for x in self._nodes.keys() ],
++        ActorHandleGroup._setHostDirInfo( [ 'tcp://%s:%d' % ( x, self._opsPort ) for x in list(self._nodes.keys()) ],
+                                           private_key = self._private_key )
+ 
+     def _connectToNode( self, host, isSeed = False ):
+@@ -123,11 +128,11 @@
+         try:
+             while True:
+                 srcNodeIndex = random.randint( 0, len( self._nodes ) - 1 )
+-                srcNodeKey = self._nodes.keys()[ srcNodeIndex ]
++                srcNodeKey = list(self._nodes.keys())[ srcNodeIndex ]
+                 toQuery = self._nodes[ srcNodeKey ][ 'socket' ]
+                 nodes = toQuery.request( { 'req' : 'get_nodes' }, timeout = 10 )
+                 if isMessageSuccess( nodes ):
+-                    for k in nodes[ 'data' ][ 'nodes' ].keys():
++                    for k in list(nodes[ 'data' ][ 'nodes' ].keys()):
+                         if k not in self._nodes:
+                             self._connectToNode( k )
+                 elif not self._nodes[ srcNodeKey ][ 'is_seed' ]:
+@@ -137,7 +142,7 @@
+                         nodeInfo[ 'socket' ].close()
+                     continue
+ 
+-                for nodeName, node in self._nodes.items():
++                for nodeName, node in list(self._nodes.items()):
+                     newInfo = self._getHostInfo( node[ 'socket' ] )
+                     if newInfo is not None:
+                         self._nodes[ nodeName ][ 'info' ] = newInfo
+@@ -226,42 +231,42 @@
+ 
+         thisRealm = realm if realm is not None else self._realm
+ 
+-        if type( category ) is str or type( category ) is unicode:
++        if type( category ) is str or type( category ) is str:
+             category = ( category, )
+ 
+         if 'random' == strategy or strategy is None:
+-            node = self._nodes.values()[ random.randint( 0, len( self._nodes ) - 1 ) ][ 'socket' ]
++            node = list(self._nodes.values())[ random.randint( 0, len( self._nodes ) - 1 ) ][ 'socket' ]
+         elif 'resource' == strategy:
+             # For now the simple version of this strategy is to just average the CPU and MEM %.
+-            node = min( self._nodes.values(), key = lambda x: ( sum( x[ 'info' ][ 'cpu' ] ) /
++            node = min( list(self._nodes.values()), key = lambda x: ( sum( x[ 'info' ][ 'cpu' ] ) /
+                                                                 len( x[ 'info' ][ 'cpu' ] ) +
+                                                                 x[ 'info' ][ 'mem' ] ) / 2 )[ 'socket' ]
+         elif 'affinity' == strategy:
+-            nodeList = self._dirCache.get( strategy_hint, {} ).values()
++            nodeList = list(self._dirCache.get( strategy_hint, {} ).values())
+             population = {}
+             for n in nodeList:
+                 name = n.split( ':' )[ 1 ][ 2 : ]
+                 population.setdefault( name, 0 )
+                 population[ name ] += 1
+             if 0 != len( population ):
+-                affinityNode = population.keys()[ random.randint( 0, len( population ) - 1 ) ]
++                affinityNode = list(population.keys())[ random.randint( 0, len( population ) - 1 ) ]
+                 node = self._nodes[ affinityNode ].get( 'socket', None )
+                 # We create a temporary entry to allow us to do multiple Add in a row
+                 for cat in category:
+                     self._dirCache.setdefault( cat, {} )[ str(uuid.uuid4()) ] = '%s:XXXX' % affinityNode
+             else:
+                 # There is nothing in play, fall back to random
+-                node = self._nodes.values()[ random.randint( 0, len( self._nodes ) - 1 ) ][ 'socket' ]
++                node = list(self._nodes.values())[ random.randint( 0, len( self._nodes ) - 1 ) ][ 'socket' ]
+         elif 'host_affinity' == strategy:
+             node = self._nodes.get( strategy_hint, None )
+             if node is not None:
+                 node = node[ 'socket' ]
+         elif 'repulsion' == strategy:
+-            possibleNodes = self._nodes.keys()
++            possibleNodes = list(self._nodes.keys())
+ 
+             if strategy_hint is None:
+                 strategy_hint = category[ 0 ]
+-            nodeList = self._dirCache.get( strategy_hint, {} ).values()
++            nodeList = list(self._dirCache.get( strategy_hint, {} ).values())
+ 
+             for n in nodeList:
+                 name = n.split( ':' )[ 1 ][ 2 : ]
+@@ -276,14 +281,14 @@
+                     self._dirCache.setdefault( cat, {} )[ str(uuid.uuid4()) ] = 'tcp://%s:XXXX' % affinityNode
+             else:
+                 # There is nothing in play, fall back to random
+-                node = self._nodes.values()[ random.randint( 0, len( self._nodes ) - 1 ) ][ 'socket' ]
++                node = list(self._nodes.values())[ random.randint( 0, len( self._nodes ) - 1 ) ][ 'socket' ]
+         elif 'roundrobin' == strategy:
+             if 0 != len( self._nodes ):
+                 curI = ( self._lastAddActorNode + 1 ) if self._lastAddActorNode is not None else 0
+                 if curI >= len( self._nodes ):
+                     curI = 0
+                 self._lastAddActorNode = curI
+-                node = self._nodes.values()[ curI ][ 'socket' ]
++                node = list(self._nodes.values())[ curI ][ 'socket' ]
+ 
+         if node is not None:
+             info = { 'req' : 'start_actor',
+@@ -309,6 +314,10 @@
+                 info[ 'logdest' ] = log_dest
+             if self._admin_token is not None:
+                 info[ 'admin_token' ] = self._admin_token
++            
++            #print(node)
++            print(info)
++            
+             resp = node.request( info, timeout = 30 )
+ 
+         return resp
+@@ -320,7 +329,7 @@
+ 
+         :returns: the realm directory of the cluster
+         '''
+-        node = self._nodes.values()[ random.randint( 0, len( self._nodes ) - 1 ) ][ 'socket' ]
++        node = list(self._nodes.values())[ random.randint( 0, len( self._nodes ) - 1 ) ][ 'socket' ]
+         resp = node.request( { 'req' : 'get_full_dir' }, timeout = timeout )
+         if isMessageSuccess( resp ):
+             resp = resp[ 'data' ]
+@@ -338,7 +347,7 @@
+         req = { 'req' : 'flush' }
+         if self._admin_token is not None:
+             req[ 'admin_token' ] = self._admin_token
+-        for node in self._nodes.values():
++        for node in list(self._nodes.values()):
+             resp = node[ 'socket' ].request( req, timeout = 30 )
+             if not isMessageSuccess( resp ):
+                 isFlushed = False
+@@ -387,16 +396,16 @@
+                 if not isinstance( withCategory, collections.Iterable ):
+                     withCategory = ( withCategory, )
+                 for cat in withCategory:
+-                    for realmCat in tmpDir[ 'realms' ].get( self._realm, {} ).keys():
++                    for realmCat in list(tmpDir[ 'realms' ].get( self._realm, {} ).keys()):
+                         if realmCat.startswith( cat ):
+-                            toRemove += tmpDir[ 'realms' ].get( self._realm, {} ).get( realmCat, {} ).keys()
++                            toRemove += list(tmpDir[ 'realms' ].get( self._realm, {} ).get( realmCat, {} ).keys())
+ 
+             # We take the easy way out for now by just spamming the kill to every node.
+             isSuccess = {}
+             req = { 'req' : 'kill_actor', 'uid' : toRemove }
+             if self._admin_token is not None:
+                 req[ 'admin_token' ] = self._admin_token
+-            for k, node in self._nodes.items():
++            for k, node in list(self._nodes.items()):
+                 resp = node[ 'socket' ].request( req, timeout = 30 )
+                 isSuccess[ k ] = resp
+                 if delay is not None:
+@@ -411,7 +420,7 @@
+         '''
+         health = {}
+ 
+-        for name, node in self._nodes.items():
++        for name, node in list(self._nodes.items()):
+             health[ name ] = node[ 'info' ]
+ 
+         return health
+@@ -423,7 +432,7 @@
+         '''
+         load = {}
+ 
+-        for node in self._nodes.values():
++        for node in list(self._nodes.values()):
+             resp = node[ 'socket' ].request( { 'req' : 'get_load_info' }, timeout = 30 )
+             if isMessageSuccess( resp ):
+                 load.update( resp[ 'data' ][ 'load' ] )
+@@ -436,7 +445,7 @@
+         :returns: the metadata of nodes of the cluster
+         '''
+         mtd = {}
+-        for nodename, node in self._nodes.items():
++        for nodename, node in list(self._nodes.items()):
+             mtd[ nodename ] = node[ 'socket' ].request( { 'req' : 'get_full_mtd' }, timeout = 10 )
+ 
+         return mtd
+@@ -473,7 +482,7 @@
+         if self._admin_token is not None:
+             req[ 'admin_token' ] = self._admin_token
+ 
+-        for node in self._nodes.values():
++        for node in list(self._nodes.values()):
+             resp = node[ 'socket' ].request( req, timeout = 30 )
+             if isMessageSuccess( resp ):
+                 isSuccess = True
+@@ -495,10 +504,10 @@
+         if self._admin_token is not None:
+             req[ 'admin_token' ] = self._admin_token
+ 
+-        for node in self._nodes.values():
++        for node in list(self._nodes.values()):
+             resp = node[ 'socket' ].request( req, timeout = 30 )
+             if isMessageSuccess( resp ):
+                 isSuccess = True
+                 break
+ 
+-        return isSuccess
+\ No newline at end of file
++        return isSuccess
+diff -Naur a/beach/beach_cli.py b/beach/beach_cli.py
+--- a/beach/beach_cli.py	2017-09-18 08:31:46.536855000 -0400
++++ b/beach/beach_cli.py	2017-09-15 10:14:02.277303000 -0400
+@@ -31,7 +31,7 @@
+ from beach.beach_api import Beach
+ 
+ def eprint( msg ):
+-    print >> sys.stderr, msg
++    print(msg, file=sys.stderr)
+ 
+ try:
+     import M2Crypto
+@@ -81,7 +81,7 @@
+         pass
+ 
+     def printOut( self, data ):
+-        print( json.dumps( data, indent = 4 ) )
++        print(( json.dumps( data, indent = 4 ) ))
+ 
+     @report_errors
+     def do_gen_key( self, s ):
+@@ -471,7 +471,7 @@
+                         if not resp.isSuccess:
+                             print( resp )
+                         else:
+-                            print( json.dumps( resp.data, indent = 4 ) )
++                            print(( json.dumps( resp.data, indent = 4 ) ))
+                 h.close()
+                 beach.close()
+             else:
+@@ -479,5 +479,5 @@
+                     print( resp )
+                     sys.exit( 1 )
+                 else:
+-                    print( json.dumps( resp.data, indent = 4 ) )
+-                    sys.exit( 0 )
+\ No newline at end of file
++                    print(( json.dumps( resp.data, indent = 4 ) ))
++                    sys.exit( 0 )
+diff -Naur a/beach/crypto.py b/beach/crypto.py
+--- a/beach/crypto.py	1969-12-31 19:00:00.000000000 -0500
++++ b/beach/crypto.py	2017-09-17 20:55:12.569623000 -0400
+@@ -0,0 +1,14 @@
++M2CRYPTO = False
++IV_LENGTH = 0x10
++try:
++    import M2Crypto
++    M2CRYPTO = True
++except:
++    print( "Beach crypto facilities reverted due to failure to load M2Crypto." )
++
++if not M2CRYPTO:
++    from beach.m2pycrypto import Secret
++    #from Crypto.Cipher import AES
++
++
++
+diff -Naur a/beach/dashboard/__init__.py b/beach/dashboard/__init__.py
+--- a/beach/dashboard/__init__.py	2017-09-18 08:31:46.536855000 -0400
++++ b/beach/dashboard/__init__.py	2017-09-15 08:42:04.514082000 -0400
+@@ -1 +1 @@
+-import dashboard
+\ No newline at end of file
++from . import dashboard
+\ No newline at end of file
+diff -Naur a/beach/dashboard/__main__.py b/beach/dashboard/__main__.py
+--- a/beach/dashboard/__main__.py	2017-09-18 08:31:46.536855000 -0400
++++ b/beach/dashboard/__main__.py	2017-09-15 08:42:04.514082000 -0400
+@@ -1 +1 @@
+-import dashboard
+\ No newline at end of file
++from . import dashboard
+\ No newline at end of file
+diff -Naur a/beach/dashboard/dashboard.py b/beach/dashboard/dashboard.py
+--- a/beach/dashboard/dashboard.py	2017-09-18 08:31:46.536855000 -0400
++++ b/beach/dashboard/dashboard.py	2017-09-17 11:16:18.056999000 -0400
+@@ -27,7 +27,7 @@
+ import time
+ import json
+ from functools import wraps
+-from sets import Set
++#from sets import Set
+ import gevent
+ 
+ ###############################################################################
+@@ -85,17 +85,20 @@
+     info[ 'load' ] = beach.getLoadInfo()
+     metadata = {}
+     mtd = beach.getAllNodeMetadata()
+-    for nodeMtd in mtd.values():
++    for nodeMtd in list(mtd.values()):
+         if nodeMtd is False: continue
+-        for uid, actorMtd in nodeMtd.get( 'data', {} ).get( 'mtd', {} ).iteritems():
++        for uid, actorMtd in nodeMtd.get( 'data', {} ).get( 'mtd', {} ).items():
+             metadata[ uid ] = '%s/%s' % ( actorMtd[ 'realm' ], actorMtd[ 'name' ] )
+     info[ 'actor_mtd' ] = metadata
+ 
+-    unique_actors = Set()
++    unique_actors = set()
+     n_realms = 0
+     n_cats = 0
++    
+     if info[ 'dir' ] is not False:
+         for realm, categories in info[ 'dir' ][ 'realms' ].items():
++            print(realm)
++            print(categories)
+             n_realms += 1
+             for cat_name, actors in categories.items():
+                 n_cats += 1
+@@ -136,4 +139,4 @@
+ 
+ gevent.spawn( periodicUpdate )
+ 
+-app.run()
+\ No newline at end of file
++app.run()
+diff -Naur a/beach/hostmanager.py b/beach/hostmanager.py
+--- a/beach/hostmanager.py	2017-09-18 08:31:46.553522000 -0400
++++ b/beach/hostmanager.py	2017-09-17 20:47:02.616300000 -0400
+@@ -36,7 +36,6 @@
+ import socket
+ import time
+ import random
+-from sets import Set
+ import logging
+ import logging.handlers
+ import subprocess
+@@ -44,7 +43,10 @@
+ import collections
+ import uuid
+ import syslog
+-from prefixtree import PrefixDict
++
++from beach.prefixtree import PrefixDict
++#from pygtrie import StringTrie as PrefixDict
++
+ from functools import wraps
+ import traceback
+ import copy
+@@ -64,7 +66,7 @@
+             try:
+                 res = f( *args, **kwargs )
+             except:
+-                print( traceback.format_exc() )
++                print(( traceback.format_exc() ))
+                 args[ 0 ]._logCritical( traceback.format_exc() )
+             else:
+                 break
+@@ -99,7 +101,7 @@
+         self.reverseDir = {}
+         self.tombstones = {}
+         self.actorInfo = {}
+-        self.ports_available = Set()
++        self.ports_available = set()
+         self.nProcesses = 0
+         self.processes = []
+         self.initialProcesses = False
+@@ -192,7 +194,7 @@
+         self._log( "Listening for ops on %s:%d" % ( self.ifaceIp4, self.opsPort ) )
+         
+         self.port_range = ( self.configFile.get( 'port_range_start', 5000 ), self.configFile.get( 'port_range_end', 6000 ) )
+-        self.ports_available.update( xrange( self.port_range[ 0 ], self.port_range[ 1 ] + 1 ) )
++        self.ports_available.update( range( self.port_range[ 0 ], self.port_range[ 1 ] + 1 ) )
+         
+         self.peer_keepalive_seconds = self.configFile.get( 'peer_keepalive_seconds', 60 )
+         self.instance_keepalive_seconds = self.configFile.get( 'instance_keepalive_seconds', 600 )
+@@ -281,8 +283,8 @@
+         with self.dirLock.writer():
+             if self.reverseDir.pop( uid, None ) is not None:
+                 self.isActorChanged.set()
+-            for realm in self.directory.keys():
+-                for cname, c in self.directory[ realm ].items():
++            for realm in list(self.directory.keys()):
++                for cname, c in list(self.directory[ realm ].items()):
+                     if c.pop( uid, None ) is not None:
+                         isFound = True
+                         if 0 == len( c ):
+@@ -312,7 +314,7 @@
+             if self.isTombstoneChanged.wait( 0 ):
+                 gevent.sleep( 5 )
+                 self.isTombstoneChanged.clear()
+-                for uid in self.tombstones.keys():
++                for uid in list(self.tombstones.keys()):
+                     if uid in self.reverseDir:
+                         self._removeUidFromDirectory( uid )
+ 
+@@ -322,15 +324,15 @@
+             self._log( "Cleaning up directory" )
+             newDir = {}
+             with self.dirLock.writer():
+-                for realmName, realm in self.directory.iteritems():
++                for realmName, realm in self.directory.items():
+                     newDir[ realmName ] = PrefixDict()
+-                    for catName, cat in realm.iteritems():
++                    for catName, cat in realm.items():
+                         if 0 != len( cat ):
+                             newDir[ realmName ][ catName ] = cat
+                 self.directory = newDir
+ 
+     def _removeInstanceActorsFromDirectory( self, instance ):
+-        for uid, actor in self.actorInfo.items():
++        for uid, actor in list(self.actorInfo.items()):
+             if actor[ 'instance' ] == instance:
+                 self._removeUidFromDirectory( uid )
+                 self._addTombstone( uid )
+@@ -366,7 +368,7 @@
+         info[ 'owner' ] = owner
+         info[ 'resources' ] = resources
+         info[ 'params' ] = {}
+-        for k in parameters.keys():
++        for k in list(parameters.keys()):
+             if k.startswith( '_' ):
+                 info[ 'params' ][ k ] = '<PRIVATE>'
+             else:
+@@ -376,15 +378,15 @@
+         ourNode = 'tcp://%s:' % ( self.ifaceIp4, )
+         isGhostActorsFound = False
+         with self.dirLock.writer():
+-            for uid, dest in newReverse.iteritems():
++            for uid, dest in newReverse.items():
+                 if uid not in self.reverseDir and uid not in self.tombstones:
+                     self.reverseDir[ uid ] = dest
+-            for realm, catMap in newDir.iteritems():
++            for realm, catMap in newDir.items():
+                 curDir.setdefault( realm, PrefixDict() )
+-                for cat, endpoints in catMap.iteritems():
++                for cat, endpoints in catMap.items():
+                     if 0 == len( endpoints ): continue
+                     curDir[ realm ].setdefault( cat, {} )
+-                    for uid, endpoint in endpoints.iteritems():
++                    for uid, endpoint in endpoints.items():
+                         if uid in self.tombstones: continue
+                         # Check for ghost directory entries that report to be from here
+                         # but are not, may be that this node restarted.
+@@ -401,9 +403,17 @@
+     def _getDirectoryEntriesFor( self, realm, category ):
+         endpoints = {}
+         with self.dirLock.reader():
++            #realmTrie = self.directory.get( realm, None )
++            #if realmTrie is not None:
++            #    if category in realmTrie:
++            #        cats = list(realmTrie[category:])
++            #        for cat in cats:
++            #            endpoints.update( cat )
+             cats = self.directory.get( realm, PrefixDict() )[ category : category ]
+             for cat in cats:
+                 endpoints.update( cat )
++        print("endpoints")
++        print(endpoints)
+         return endpoints
+     
+     @handleExceptions
+@@ -414,7 +424,7 @@
+             maxTime = self.tombstone_culling_seconds
+             nextTime = currentTime
+             
+-            for uid, ts in self.tombstones.items():
++            for uid, ts in list(self.tombstones.items()):
+                 if ts < currentTime - maxTime:
+                     self.tombstones.pop( uid, None )
+                 elif ts < nextTime:
+@@ -425,8 +435,10 @@
+     @handleExceptions
+     def _svc_receiveOpsTasks( self ):
+         z = self.opsSocket.getChild()
++        
+         while not self.stopEvent.wait( 0 ):
+             data = z.recv()
++            print(data)
+             if data is not False and 'req' in data:
+                 action = data[ 'req' ]
+                 #start = time.time()
+@@ -499,6 +511,7 @@
+                                                                                           {} )[ uid ] = 'tcp://%s:%d' % ( self.ifaceIp4,
+                                                                                                                           port )
+                             self.isActorChanged.set()
++                            
+                         else:
+                             self._logCritical( 'Error loading actor %s: %s.' % ( actorName, newMsg ) )
+                             self._removeUidFromDirectory( uid )
+@@ -580,7 +593,7 @@
+                         z.send( errorMessage( 'no category specified' ) )
+                 elif 'get_nodes' == action:
+                     nodeList = {}
+-                    for k in self.nodes.keys():
++                    for k in list(self.nodes.keys()):
+                         nodeList[ k ] = { 'last_seen' : self.nodes[ k ][ 'last_seen' ] }
+                     z.send( successMessage( { 'nodes' : nodeList } ) )
+                 elif 'flush' == action:
+@@ -588,7 +601,7 @@
+                         z.send( errorMessage( 'unprivileged' ) )
+                     else:
+                         resp = successMessage()
+-                        for uid, actor in self.actorInfo.items():
++                        for uid, actor in list(self.actorInfo.items()):
+                             instance = actor[ 'instance' ]
+                             newMsg = instance[ 'socket' ].request( { 'req' : 'kill_actor',
+                                                                      'uid' : uid },
+@@ -615,7 +628,7 @@
+                 elif 'push_dir_sync' == action:
+                     if 'directory' in data and 'tombstones' in data and 'reverse' in data:
+                         z.send( successMessage() )
+-                        for uid, ts in data[ 'tombstones' ].iteritems():
++                        for uid, ts in data[ 'tombstones' ].items():
+                             self._addTombstone( uid, ts )
+                         self._updateDirectoryWith( self.directory, data[ 'directory' ], data[ 'reverse' ] )
+                     else:
+@@ -761,7 +774,7 @@
+                         isBrandNew = False
+ 
+                     if isBrandNew or not instance[ 'isolated' ]:
+-                        proc = subprocess.Popen( [ 'python',
++                        proc = subprocess.Popen( [ 'python3',
+                                                    '%s/actorhost.py' % self.py_beach_dir,
+                                                     self.configFilePath,
+                                                     instance[ 'id' ],
+@@ -795,12 +808,12 @@
+     def _svc_host_keepalive( self ):
+         initialRefreshes = 5
+         while not self.stopEvent.wait( 0 ):
+-            for nodeName, node in self.nodes.items():
++            for nodeName, node in list(self.nodes.items()):
+                 if nodeName != self.ifaceIp4:
+                     #self._log( "Issuing keepalive for node %s" % nodeName )
+                     data = node[ 'socket' ].request( { 'req' : 'keepalive',
+                                                        'from' : self.ifaceIp4,
+-                                                       'others' : self.nodes.keys() }, timeout = 30 )
++                                                       'others' : list(self.nodes.keys()) }, timeout = 30 )
+ 
+                     if isMessageSuccess( data ):
+                         node[ 'last_seen' ] = int( time.time() )
+@@ -824,13 +837,13 @@
+                 continue
+             else:
+                 nextWait = self.directory_sync_seconds / len( self.nodes )
+-            for nodeName, node in self.nodes.items():
++            for nodeName, node in list(self.nodes.items()):
+                 if nodeName != self.ifaceIp4:
+                     #self._log( "Issuing directory sync with node %s" % nodeName )
+                     data = node[ 'socket' ].request( { 'req' : 'get_dir_sync' } )
+ 
+                     if isMessageSuccess( data ):
+-                        for uid, ts in data[ 'data' ][ 'tombstones' ].iteritems():
++                        for uid, ts in data[ 'data' ][ 'tombstones' ].items():
+                             self._addTombstone( uid, ts )
+                         self._updateDirectoryWith( self.directory, data[ 'data' ][ 'directory' ], data[ 'data' ][ 'reverse' ] )
+                     else:
+@@ -851,7 +864,7 @@
+                 tmpDir = copy.deepcopy( self.directory )
+                 tmpTomb = copy.deepcopy( self.tombstones )
+                 tmpReverse = copy.deepcopy( self.reverseDir )
+-            for nodeName, node in self.nodes.items():
++            for nodeName, node in list(self.nodes.items()):
+                 if nodeName != self.ifaceIp4:
+                     #self._log( "Pushing new directory update to %s" % nodeName )
+                     node[ 'socket' ].request( { 'req' : 'push_dir_sync',
+@@ -922,4 +935,4 @@
+ 
+     #gevent.spawn_later( 60 * 2, printStats )
+ 
+-    hostManager = HostManager( args.configFile, args.loglevel, args.logdest, iface = args.iface )
+\ No newline at end of file
++    hostManager = HostManager( args.configFile, args.loglevel, args.logdest, iface = args.iface )
+diff -Naur a/beach/m2pycrypto.py b/beach/m2pycrypto.py
+--- a/beach/m2pycrypto.py	1969-12-31 19:00:00.000000000 -0500
++++ b/beach/m2pycrypto.py	2017-09-17 20:54:33.566291000 -0400
+@@ -0,0 +1,361 @@
++#!/usr/bin/env python
++#
++# Copyright (c) 2013 Carl Scharenberg <carl.scharenberg@gmail.com>
++#
++# Licensed under the Apache License, Version 2.0 (the "License");
++# you may not use this file except in compliance with the License.
++# You may obtain a copy of the License at
++#
++#     http://www.apache.org/licenses/LICENSE-2.0
++#
++# Unless required by applicable law or agreed to in writing, software
++# distributed under the License is distributed on an "AS IS" BASIS,
++# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++# See the License for the specific language governing permissions and
++# limitations under the License.
++
++__all__ = ['SecretError', 'NoDataError', 'DecryptionError', 'EncryptionError',
++           'PasswordError', 'Secret']
++
++"""
++Small utility and module for encrypting and decrypting data using symmetric-key
++algorithms. By default uses 256-bit AES (Rijndael) using CBC, but some options
++are configurable. PBKDF2 algorithm used to derive key from password.
++
++Sample uses: passwords in INI files, password manager, encrypted files
++"""
++
++import os
++import sys
++import hmac
++from hashlib import sha256
++from binascii import hexlify, unhexlify
++
++from Crypto.Cipher import AES
++from Crypto.Protocol.KDF import PBKDF2
++
++
++version = '0.1'
++version_info = tuple([int(x) for x in version.split('.')])
++
++
++class SecretError(Exception):
++    """
++    Base class for Secret-specific errors.
++    """
++
++
++class NoDataError(SecretError):
++    """
++    This exception will be raised if we don't have data to encrypt/decrypt.
++    """
++
++
++class DecryptionError(SecretError):
++    """
++    Failed to decrypt. Can happen with wrong password, for example.
++    """
++
++
++class EncryptionError(SecretError):
++    """
++    Failed to encrypt.
++    """
++
++
++class PasswordError(SecretError):
++    """
++    Problem with password(s).
++    """
++
++
++class Secret:
++    """
++    Stores a secret and has ways to decrypt the secret and set new secret.
++
++    @warning: Once password is in memory, it will be possible
++              to get the ciphertext as well. This may be possible
++              even after the password is cleared due to Python memory
++              management.
++    @warning: If the password is used, secret will be decrypted and available
++              in plain text in memory, possibly even after it has been
++              explicitly cleared after use.
++    @warning: If weak password is used, the
++              encryption will not be of much help.
++    """
++
++    def __init__(self, iv=None, salt=None, ciphertext=None,
++                 iterations=1000, algorithm='aes_256_cbc'):
++        """
++        Construct a Secret object.
++
++        ciphertext, iv and salt can be None when originally created. The Secret
++        is then considered to not hold any data. To set new data, call
++        encrypt().
++
++        @param iv: The IV, 256 bits (byte string 32 long)
++        @param salt: The salt, 256 bits (byte string 32 long)
++        @param ciphertext: The secret to hold
++        @param iterations: The number of iterations to use with PBKDF2,
++                           recommend 1000.
++        @param param: The algorithm to use, recommend aes_256_cbc.
++        """
++        self.ciphertext = ciphertext
++        self.iv = iv or os.urandom(32)
++        self.salt = salt or os.urandom(32)
++        self.iterations = iterations
++        self.algorithm = algorithm
++
++    def decrypt(self, password):
++        """
++        Decrypt.
++
++        @param password: The password to decrypt data with.
++        @return: Decrypted data
++        """
++        if not self.ciphertext or not self.iv or not self.salt or \
++                        password is None:
++            raise NoDataError
++
++        # If the password is callable we'll assume it will return the
++        # real password.
++        try:
++            password = password()
++        except TypeError:
++            pass
++
++        # the crypto algorithms are unicode unfriendly
++        if isinstance(password, unicode):
++            password = password.encode('utf8')
++
++        # derive 256 bit key using the pbkdf2 standard
++        key = PBKDF2(password, self.salt, dkLen=32, count=self.iterations)
++
++        # Derive encryption key and HMAC key from it
++        # See Practical Cryptography section 8.4.1.
++        hmacKey = sha256(key + 'MAC').digest()
++        encKey = sha256(key + 'encrypt').digest()
++        del key
++
++        # decrypt
++        try:
++            ret = decrypt(self.ciphertext, encKey, self.iv, self.algorithm)
++        except Exception, e:
++            # TODO Identify a more specific error to catch. For M2Crypto, was "EVP.EVPError"
++            raise EncryptionError(str(e))
++        finally:
++            del encKey
++
++        # Check MAC
++        mac = ret[-64:]
++        ret = ret[:-64]
++        try:
++            if hmac.new(hmacKey, ret + self.iv + self.salt,
++                        sha256).hexdigest() != mac:
++                raise DecryptionError('HMAC does not match')
++        finally:
++            del hmacKey
++
++        return ret
++
++    def encrypt(self, cleartext, password):
++        """
++        Encrypt.
++
++        @param cleartext: The data to encrypt.
++        @param password: The password to encrypt data with.
++        @return: Encrypted data
++        """
++        if cleartext is None or password is None:
++            raise NoDataError
++
++        # If the password is callable we'll assume it will return the
++        # real password.
++        try:
++            password = password()
++        except TypeError:
++            pass
++
++        # the crypto algorithms are unicode unfriendly
++        if isinstance(password, unicode):
++            password = password.encode('utf8')
++
++        # derive 256 bit encryption key using the pbkdf2 standard
++        key = PBKDF2(password, self.salt, dkLen=32, count=self.iterations)
++
++        # Derive encryption key and HMAC key from it
++        # See Practical Cryptography section 8.4.1.
++        hmacKey = sha256(key + 'MAC').digest()
++        encKey = sha256(key + 'encrypt').digest()
++        del key
++
++        # Add HMAC to cleartext so that we can check during decrypt if we got
++        # the right cleartext back. We are doing sign-then-encrypt, which let's
++        # us encrypt empty cleartext (otherwise we'd need to pad with some
++        # string to encrypt). Practical Cryptography by Schneier & Ferguson
++        # also recommends doing it in this order in section 8.2.
++        mac = hmac.new(hmacKey,
++                       cleartext + self.iv + self.salt,
++                       sha256).hexdigest()
++        del hmacKey
++
++        # encrypt
++        try:
++            self.ciphertext = encrypt(cleartext + mac, encKey, self.iv,
++                                      self.algorithm)
++        except Exception, e:
++            # TODO Identify a more specific error to catch. For M2Crypto, was "EVP.EVPError"
++            raise EncryptionError(str(e))
++
++        return self.ciphertext
++
++    def serialize(self, serialize=None):
++        """Serialize secret.
++
++        @param serialize: None or callable that must accept string to serialize
++        @return: Serialized string
++        """
++        if not self.ciphertext or not self.iv or not self.salt:
++            raise NoDataError
++
++        serialized = "%s|%s|%s" % (hexlify(self.iv), hexlify(self.salt),
++                                   hexlify(self.ciphertext))
++        if serialize is not None:
++            serialize(serialized)
++        return serialized
++
++    def deserialize(self, deserialize):
++        """Deserialize secret.
++
++        @param deserialize: String or callable that must return the serialized form.
++        """
++        try:
++            serialized = deserialize()
++        except TypeError:
++            serialized = deserialize
++
++        iv, salt, ciphertext = serialized.split('|')
++        self.iv, self.salt, self.ciphertext = unhexlify(iv), unhexlify(salt), unhexlify(ciphertext)
++
++    def clear(self):
++        try:
++            del self.ciphertext
++        except AttributeError:
++            pass
++        try:
++            del self.iv
++        except AttributeError:
++            pass
++        try:
++            del self.salt
++        except AttributeError:
++            pass
++
++
++def pkcs7_encode(text, k=16):
++    """Pad text out to k-byte blocks with PKCS#7 algorithm."""
++    n = k - (len(text) % k)
++    return text + unhexlify(n * ("%02x" % n))
++
++
++def pkcs7_decode(text, k=16):
++    """Remove pad characters from text encoded with PKCS#7 algorithm."""
++    if len(text) == 0:
++        raise ValueError("Empty string implies incorrect padding")
++    n = int(hexlify(text[-1]), 16)
++    if n > k:
++        raise ValueError("Input is not padded or padding is corrupt")
++    return text[:-n]
++
++
++def decrypt(ciphertext, key, iv, alg):
++    """
++    Decrypt ciphertext
++    """
++    assert len(key) == len(iv) == 32
++    cipher = AES.new(key=key, mode=AES.MODE_CBC, IV=iv[:16])
++    del key
++    plaintext = pkcs7_decode(cipher.decrypt(ciphertext))
++    return plaintext
++
++
++def encrypt(plaintext, key, iv, alg):
++    """
++    Encrypt plaintext
++    """
++    assert len(key) == len(iv) == 32
++    cipher = AES.new(key=key, mode=AES.MODE_CBC, IV=iv[:16])
++    del key
++    ciphertext = cipher.encrypt(pkcs7_encode(plaintext))
++    assert ciphertext
++    return ciphertext
++
++
++def get_password(confirm=True):
++    """get password"""
++    import getpass
++
++    password = getpass.getpass('password:')
++    if confirm:
++        if getpass.getpass('password (again):') != password:
++            raise PasswordError('Passwords do not match')
++    return password
++
++
++def main():
++    from optparse import OptionParser
++
++    usage = 'usage: %prog [options]'
++    parser = OptionParser(usage=usage,
++                          version='%prog ' + version,
++                          description='Encrypt or decrypt data with password using 256 bit AES (Rijndael) encryption in CBC mode. Key derived from password with PBKDF2 algorithm using 1000 iterations.')
++    parser.add_option('-d', '--decrypt',
++                      action='store_true', dest='decrypt', default=False,
++                      help="Decryption mode.")
++    parser.add_option('-e', '--encrypt',
++                      action='store_true', dest='encrypt', default=False,
++                      help="Encryption mode.")
++    parser.add_option('-i', '--in',
++                      dest='infile', metavar='INFILE',
++                      help='INFILE to read in. Without this options reads stdin.')
++    parser.add_option('-o', '--out',
++                      dest='outfile', metavar='OUTFILE',
++                      help="OUTFILE to output into. Without this option prints to stdout.")
++    parser.add_option('-p', '--password',
++                      metavar='PASSWORD', dest='password',
++                      help="Supply PASSWORD from the command line (otherwise will be prompted for). Try to not use this option, since it is safer to be prompted for password.")
++
++    (options, args) = parser.parse_args()
++    if (options.decrypt and options.encrypt) or (not options.decrypt and not options.encrypt):
++        parser.print_help()
++        sys.exit(1)
++
++    if not options.infile:
++        options.args = ''.join(sys.stdin.readlines())
++    else:
++        options.args = ''
++
++    if options.encrypt:
++        secret = Secret()
++        secret.encrypt(options.args or open(options.infile, 'rb').read(),
++                       options.password or get_password)
++        if options.outfile:
++            f = open(options.outfile, 'wb')
++            secret.serialize(f.write)
++            f.close()
++        else:
++            secret.serialize(sys.stdout.write)
++    else:
++        secret = Secret()
++        secret.deserialize((options.args or open(options.infile, 'rb').read()).strip())
++        cleartext = secret.decrypt(options.password or (lambda: get_password(confirm=False)))
++        if options.outfile:
++            f = open(options.outfile, 'wb')
++            f.write(cleartext)
++            f.close()
++        else:
++            sys.stdout.write(cleartext)
++
++
++if __name__ == "__main__":
++    main()
+\ No newline at end of file
+diff -Naur a/beach/patrol.py b/beach/patrol.py
+--- a/beach/patrol.py	2017-09-18 08:31:46.553522000 -0400
++++ b/beach/patrol.py	2017-09-17 21:23:48.136255000 -0400
+@@ -25,10 +25,10 @@
+ import gevent
+ import gevent.event
+ import os
+-from sets import Set
++#from sets import Set
+ from collections import OrderedDict
+ import traceback
+-import urllib2
++import urllib.request, urllib.error, urllib.parse
+ import hashlib
+ 
+ 
+@@ -87,9 +87,9 @@
+         tally = {}
+ 
+         mtd = self._beach.getAllNodeMetadata()
+-        for node_mtd in mtd.itervalues():
++        for node_mtd in mtd.values():
+             if node_mtd is False: continue
+-            for aid, actor_mtd in node_mtd.get( 'data', {} ).get( 'mtd', {} ).iteritems():
++            for aid, actor_mtd in node_mtd.get( 'data', {} ).get( 'mtd', {} ).items():
+                 if self._stopEvent.wait( 0 ): break
+                 owner = actor_mtd.get( 'owner', None )
+                 if owner in self._entries:
+@@ -109,7 +109,7 @@
+         else:
+             currentScale = None
+ 
+-        for actorEntry in self._entries.itervalues():
++        for actorEntry in self._entries.values():
+             if self._stopEvent.wait( 0 ): break
+             actorName = actorEntry.name
+             current = existing.get( actorName, 0 )
+@@ -213,7 +213,7 @@
+                 self._mutex.release()
+                 continue
+             self._log( 'found %d actors, testing for %d' % ( len( directory[ 'reverse' ] ), len( self._watch ) ) )
+-            for actorId in self._watch.keys():
++            for actorId in list(self._watch.keys()):
+                 if self._stopEvent.wait( 0 ): break
+                 if actorId not in directory.get( 'reverse', {} ):
+                     self._log( 'actor %s has fallen' % actorId )
+@@ -229,7 +229,7 @@
+ 
+             record = self._entries[ k ]
+ 
+-            for uid, entry in self._watch.items():
++            for uid, entry in list(self._watch.items()):
+                 if entry == record:
+                     del( self._watch[ uid ] )
+                     removed.append( uid )
+@@ -237,8 +237,8 @@
+             if isStopToo:
+                 self._beach.stopActors( withId = removed )
+         else:
+-            if self._beach.stopActors( withId = self._watch.keys() ):
+-                removed = self._watch.keys()
++            if self._beach.stopActors( withId = list(self._watch.keys()) ):
++                removed = list(self._watch.keys())
+                 self._watch = {}
+ 
+         return removed
+@@ -248,7 +248,7 @@
+             patrolFilePath = url
+             if patrolFilePath.startswith( 'file://' ):
+                 patrolFilePath = 'file://%s' % os.path.abspath( patrolFilePath[ len( 'file://' ) : ] )
+-            patrolFile = urllib2.urlopen( patrolFilePath )
++            patrolFile = urllib.request.urlopen( patrolFilePath )
+         else:
+             patrolFilePath = os.path.abspath( url )
+             patrolFile = open( patrolFilePath, 'r' )
+@@ -358,4 +358,4 @@
+ 
+     patrol.start()
+     timeToStopEvent.wait()
+-    patrol.stop()
+\ No newline at end of file
++    patrol.stop()
+diff -Naur a/beach/prefixtree/__init__.py b/beach/prefixtree/__init__.py
+--- a/beach/prefixtree/__init__.py	1969-12-31 19:00:00.000000000 -0500
++++ b/beach/prefixtree/__init__.py	2017-09-17 20:48:54.292964000 -0400
+@@ -0,0 +1,13 @@
++"""Trie based implemenation of dict and set.
++
++Provides two collection classes:
++
++* PrefixDict, a dictionary like object
++* PrefixSet, a set like object
++
++"""
++from beach.prefixtree.version import __version__
++from beach.prefixtree.collections import PrefixDict
++from beach.prefixtree.collections import PrefixSet
++
++__all__ = ['PrefixDict', 'PrefixSet']
+diff -Naur a/beach/prefixtree/collections.py b/beach/prefixtree/collections.py
+--- a/beach/prefixtree/collections.py	1969-12-31 19:00:00.000000000 -0500
++++ b/beach/prefixtree/collections.py	2017-09-17 20:49:09.206297000 -0400
+@@ -0,0 +1,155 @@
++"Prefix tree base dictionary object"
++from __future__ import absolute_import
++import itertools
++
++try:
++    # python 3.3+
++    from collections import abc
++except ImportError:
++    # python 3.2 
++    import collections as abc
++
++from beach.prefixtree.trie import TrieBase, iord
++
++
++class PrefixDict(TrieBase, abc.MutableMapping):
++    "Dictionary object using prefix trie"
++
++    def __init__(self, *args, **kwargs):
++        TrieBase.__init__(self)
++        if len(args) > 1:
++            msg = "{0} expected at most 1 arguments, got 2"
++            raise TypeError(msg.format(self.__class__.__name__))
++        if len(args) == 1:
++            if isinstance(args[0], abc.Sequence):
++                iterable = args[0]
++            elif isinstance(args[0], abc.Mapping):
++                iterable = args[0].items()
++            else:
++                msg = "{0} object is not iterable"
++                raise TypeError(msg.format(args[0].__class__.__name__))
++            for key, value in iterable:
++                self[key] = value
++        for key, value in kwargs.items():
++            self[key] = value
++
++    def _build_slice(self, key):
++        if key.start is not None:
++            start = iord(self.prepare_key(key.start)[0])
++        else:
++            start = tuple()
++
++        if key.stop is not None:
++            stop = iord(self.prepare_key(key.stop)[0])
++        else:
++            stop = tuple()
++
++        if key.step is None or key.step == 1:
++            reverse = False
++        elif key.step == -1:
++            reverse = True
++        else:
++            raise ValueError("slice step must be 1, -1 or None")
++
++        return slice(start, stop, reverse)
++
++    def __delitem__(self, key):
++        if not isinstance(key, slice):
++            try:
++                path, _ = self.prepare_key(key)
++                leaf = self._delete(iord(path), self._root)
++                del leaf.value, leaf.meta
++                self._values -= 1
++            except AttributeError:
++                raise KeyError(key)
++        else:
++            cut = self._build_slice(key)
++            for node in self._iter(self._root, cut.start, cut.stop, cut.step):
++                if not hasattr(node, 'value'):
++                    continue
++                leaf = self._delete(iord(node.path), self._root)
++                del leaf.value, leaf.meta
++                self._values -= 1
++
++    def __getitem__(self, key):
++        if not isinstance(key, slice):
++            try:
++                path, _ = self.prepare_key(key)
++                leaf = self._search(iord(path), self._root)
++                return leaf.value
++            except AttributeError:
++                raise KeyError(key)
++        else:
++            cut = self._build_slice(key)
++            return self._iter_values(self._root, cut.start, cut.stop, cut.step)
++
++    def __setitem__(self, key, value):
++        if not isinstance(key, slice):
++            path, meta = self.prepare_key(key)
++            leaf = self._insert(iord(path), self._root)
++            if not hasattr(leaf, 'value'):
++                self._values += 1
++            leaf.value = value
++            leaf.meta = meta
++        else:
++            cut = self._build_slice(key)
++            values = iter(value)
++            for node in self._iter(self._root, cut.start, cut.stop, cut.step):
++                if not hasattr(node, 'value'):
++                    continue
++                try:
++                    node.value = next(values)
++                except StopIteration:
++                    msg = "Fewer new elements to than slice length"
++                    raise ValueError(msg)
++
++
++class PrefixSet(TrieBase, abc.MutableSet):
++    "Set object using prefix trie"
++
++    def __init__(self, *args):
++        TrieBase.__init__(self)
++        if len(args) > 1:
++            msg = "{0} expected at most 1 arguments, got 2"
++            raise TypeError(msg.format(self.__class__.__name__))
++        if len(args) == 1:
++            if isinstance(args[0], abc.Sequence):
++                for key in args[0]:
++                    self.add(key)
++            else:
++                msg = "{0} object is not iterable"
++                raise TypeError(msg.format(args[0].__class__.__name__))
++
++    def __contains__(self, key):
++        try:
++            path, _ = self.prepare_key(key)
++            leaf = self._search(iord(path), self._root)
++            if hasattr(leaf, 'value'):
++                return True
++        except AttributeError:
++            return False
++
++    def add(self, key):
++        """Add an element to a set.
++
++        This has no effect if the element is already present.
++        """
++        path, meta = self.prepare_key(key)
++        leaf = self._insert(iord(path), self._root)
++        if not hasattr(leaf, 'value'):
++            self._values += 1
++        leaf.value = None
++        leaf.meta = meta
++
++    def discard(self, key):
++        """Remove an element from a set if it is a member.
++
++        If the element is not a member, do nothing.
++        """
++        try:
++            path, _ = self.prepare_key(key)
++            leaf = self._delete(iord(path), self._root)
++            del leaf.value, leaf.meta
++            self._values -= 1
++        except AttributeError:
++            pass
+diff -Naur a/beach/prefixtree/trie.py b/beach/prefixtree/trie.py
+--- a/beach/prefixtree/trie.py	1969-12-31 19:00:00.000000000 -0500
++++ b/beach/prefixtree/trie.py	2012-09-11 22:23:09.000000000 -0400
+@@ -0,0 +1,202 @@
++"Trie implementation in pure Python"
++import array
++
++try:
++    # python 2.x
++    from itertools import chain, imap, repeat, tee
++    iord = lambda s: imap(ord, s)
++    char = chr
++except ImportError:
++    # python 3.x
++    from itertools import chain, repeat, tee
++    iord = iter
++    char = lambda o: bytes(chr(o), encoding='latin1')
++
++try:
++    from collections import abc
++except ImportError:
++    import collections as abc
++
++STRING_TYPE = bytes
++UNICODE_TYPE = str if str is not bytes else unicode
++
++
++class Node(abc.MutableMapping):
++    "Node object for Trie"
++
++    __slots__ = ('value', 'meta', '_branches', '_children', '_nodes', '_path')
++
++    def __init__(self, path=b''):
++        self._branches = array.array('B', repeat(0xFF, 256))
++        self._children = 0
++        self._nodes = []
++        self._path = path
++
++    @property
++    def path(self):
++        return self._path
++
++    def __contains__(self, key):
++        offset = self._branches[key]
++        if offset >= len(self._nodes):
++            return False
++        return self._branches[key] is not None
++
++    def __delitem__(self, key):
++        offset = self._branches[key]
++        if offset < len(self._nodes):
++            self._nodes[offset] = None
++            self._children -= 1
++
++    def __getitem__(self, key):
++        offset = self._branches[key]
++        return self._nodes[offset] if offset < len(self._nodes) else None
++
++    def __iter__(self):
++        for key, offset in enumerate(self._branches):
++            if offset >= len(self._nodes):
++                continue
++            node = self._nodes[offset]
++            if node is not None:
++                yield (key, node)
++
++    def __len__(self):
++        return self._children
++
++    def __reversed__(self):
++        for key, offset in enumerate(reversed(self._branches)):
++            if offset >= len(self._nodes):
++                continue
++            node = self._nodes[offset]
++            if node is not None:
++                yield (255 - key, node)
++
++    def __setitem__(self, key, node):
++        current = self._branches[key]
++        if current < len(self._nodes):
++            self._nodes[current] = node
++        else:
++            leaf = len(self._nodes)
++            self._nodes.append(node)
++            self._branches[key] = leaf
++            self._children += 1
++
++
++class TrieBase(object):
++    "Base class for collection classes implemented using a Trie"
++
++    def __init__(self):
++        self._root = Node()
++        self._values = 0
++
++    def __iter__(self):
++        return self._iter_keys(self._root)
++
++    def __len__(self):
++        return self._values
++
++    def __reversed__(self):
++        return self._iter_keys(self._root, reverse=True)
++
++    def _delete(self, keys, node):
++        try:
++            index = next(keys)
++            child = node[index]
++            if child is None:
++                raise AttributeError(index)
++            leaf = self._delete(keys, child)
++            if len(child) == 0:
++                del node[index]
++            return leaf
++        except StopIteration:
++            return node
++
++    def _insert(self, keys, node):
++        try:
++            index = next(keys)
++            child = node[index]
++            if child is None:
++                child = Node(node.path + char(index))
++                node[index] = child
++            return self._insert(keys, child)
++        except StopIteration:
++            return node
++
++    def _iter(self, node, start=tuple(), stop=tuple(), reverse=False):
++        start = chain(start, repeat(-1))
++        stop = chain(stop, repeat(256))
++        direction = iter if not reverse else reversed
++        for node in self._walk(node, start, stop, iterate=direction):
++            yield node
++
++    def _iter_keys(self, node, start=tuple(), stop=tuple(), reverse=False):
++        for node in self._iter(node, start, stop, reverse):
++            if not hasattr(node, 'value'):
++                continue
++            yield self.restore_key(node.path, node.meta)
++
++    def _iter_values(self, node, start=tuple(), stop=tuple(), reverse=False):
++        for node in self._iter(node, start, stop, reverse):
++            if not hasattr(node, 'value'):
++                continue
++            yield node.value
++
++    def _search(self, keys, node, exact=True):
++        try:
++            index = next(keys)
++            child = node[index]
++            if child is None and exact:
++                raise AttributeError(index)
++            elif child is None:
++                return node
++            return self._search(keys, child, exact)
++        except StopIteration:
++            return node
++
++    def _walk(self, root, start, stop, lower=-1, upper=256, iterate=iter):
++        current = ord(root.path[-1:]) if len(root.path) > 0 else -1
++        if not lower <= current <= upper:
++            raise StopIteration
++        yield root
++        lower = next(start)
++        upper = next(stop)
++        for key, child in iterate(root):
++            for descendant in self._walk(child, start, stop,
++                                        lower, upper, iterate):
++                yield descendant
++
++    def prepare_key(self, key):
++        """Prepare key for use by Trie.
++
++        Encodes unicode strings to byte strings. If key is not a byte or
++        unicode string, raises ValueError.
++        """
++        encoded = False
++        if isinstance(key, UNICODE_TYPE):
++            encoded = True
++            key = key.encode('UTF-8')
++        if isinstance(key, STRING_TYPE):
++            return key, encoded
++        else:
++            raise TypeError("key must be string or bytes")
++
++    def restore_key(self, key, encoded):
++        """Restores key to user supplied state.
++
++        Decodes key if the key was originally provided as a unicode string.
++        """
++        return key.decode('UTF-8') if encoded else key
++
++    def commonprefix(self, key, restore_key=True):
++        "Return longest common prefix between key and current keys."
++        path, _ = self.prepare_key(key)
++        node = self._search(iord(path), self._root, exact=False)
++        if hasattr(node, 'value') and restore_key:
++            return self.restore_key(node.path, node.meta)
++        return node.path
++
++    def startswith(self, base, reverse=False):
++        "Iterate over all keys with matching prefix."
++        path, _ = self.prepare_key(base)
++        start, stop = tee(iord(path))
++        return self._iter_keys(self._root, start, stop, reverse)
+diff -Naur a/beach/prefixtree/version.py b/beach/prefixtree/version.py
+--- a/beach/prefixtree/version.py	1969-12-31 19:00:00.000000000 -0500
++++ b/beach/prefixtree/version.py	2012-10-30 18:03:53.000000000 -0400
+@@ -0,0 +1 @@
++__version__ = "0.2"
+diff -Naur a/beach/restbridge.py b/beach/restbridge.py
+--- a/beach/restbridge.py	2017-09-18 08:31:46.553522000 -0400
++++ b/beach/restbridge.py	2017-09-15 08:42:04.290749000 -0400
+@@ -45,7 +45,7 @@
+ ###############################################################################
+ def sanitizeJson( o, summarized = False ):
+     if type( o ) is dict:
+-        for k, v in o.iteritems():
++        for k, v in o.items():
+             o[ k ] = sanitizeJson( v, summarized = summarized )
+     elif type( o ) is list or type( o ) is tuple:
+         o = [ sanitizeJson( x, summarized = summarized ) for x in o ]
+@@ -146,7 +146,7 @@
+             timeout = float( timeout )
+ 
+         req = {}
+-        for k, v in params.iteritems():
++        for k, v in params.items():
+             if not k.startswith( '_' ):
+                 req[ k ] = v
+ 
+@@ -158,7 +158,7 @@
+         if cacheKey in handle_cache:
+             handle = handle_cache[ cacheKey ]
+         else:
+-            print( "New handle: %s / %s / %s" % ( category, timeout, ident ) )
++            print(( "New handle: %s / %s / %s" % ( category, timeout, ident ) ))
+             handle_cache[ cacheKey ] = beach.getActorHandle( category, ident = ident )
+             handle = handle_cache[ cacheKey ]
+ 
+diff -Naur a/beach/utils.py b/beach/utils.py
+--- a/beach/utils.py	2017-09-18 08:31:46.553522000 -0400
++++ b/beach/utils.py	2017-09-17 20:47:02.622967000 -0400
+@@ -22,11 +22,14 @@
+ import gevent.queue
+ import zmq.green as zmq
+ import netifaces
+-from prefixtree import PrefixDict
++
++from beach.prefixtree import PrefixDict
++#from pygtrie import StringTrie as PrefixDict
++
+ import msgpack
+ import hashlib
+ import imp
+-import urllib2
++import urllib.request, urllib.error, urllib.parse
+ import sys
+ import os
+ import warnings
+@@ -49,7 +52,7 @@
+             path = 'file://%s' % os.path.abspath( path[ 7 : ] )
+         name = path[ path.rfind( '/' ) + 1 : ]
+         name = name if not name.endswith( '.py' ) else name[ : -3 ]
+-        hUrl = urllib2.urlopen( path )
++        hUrl = urllib.request.urlopen( path )
+         content = hUrl.read()
+         hUrl.close()
+         modHash = hashlib.sha1( content ).hexdigest()
+@@ -85,15 +88,15 @@
+             value = str( value )
+         elif type( value ) is datetime.datetime:
+             value = value.strftime( '%Y-%m-%d %H:%M:%S' )
+-        elif value is not None and type( value ) not in ( str, unicode, bool, int, float ):
++        elif value is not None and type( value ) not in ( str, str, bool, int, float ):
+             value = str( value )
+         return value
+     
+     def _sanitizeJsonStruct( obj ):
+         if issubclass( type( obj ), dict ) or type( obj ) is PrefixDict:
+             data = {}
+-            for key, value in obj.iteritems():
+-                if type( key ) not in ( str, unicode, bool, int, float, tuple ):
++            for key, value in obj.items():
++                if type( key ) not in ( str, str, bool, int, float, tuple ):
+                     key = str( key )
+                 try:
+                     data[ key ] = _sanitizeJsonStruct( value )
+@@ -208,9 +211,9 @@
+                 self.s.send( data )
+         except _TimeoutException:
+             self._rebuildIfNecessary()
+-        except zmq.ZMQError, e:
++        except zmq.ZMQError as e:
+             self._buildSocket()
+-        except Exception, e:
++        except Exception as e:
+             self._buildSocket()
+         else:
+             isSuccess = True
+@@ -231,7 +234,7 @@
+                 data = self.s.recv()
+         except _TimeoutException:
+             self._rebuildIfNecessary()
+-        except zmq.ZMQError, e:
++        except zmq.ZMQError as e:
+             self._buildSocket()
+ 
+         if data is not None and data is not False:
+@@ -251,7 +254,10 @@
+                     data = None
+ 
+             if data is not None:
+-                data = msgpack.unpackb( data, use_list = False )
++                #data = msgpack.unpackb( data, use_list = False )
++                unpacker = msgpack.Unpacker( encoding="utf-8", use_list = False )
++                unpacker.feed( data )
++                data = unpacker.unpack()
+ 
+         return data
+     
+@@ -409,7 +415,10 @@
+                             result = None
+ 
+                     if result is not None:
+-                        result = msgpack.unpackb( result, use_list = False )
++                        #result = msgpack.unpackb( result, use_list = False )
++                        unpacker = msgpack.Unpacker( encoding="utf-8", use_list = False )
++                        unpacker.feed( result )
++                        result = unpacker.unpack()
+ 
+         except _TimeoutException:
+             z.close( linger = 0 )
+@@ -519,7 +528,7 @@
+             except _TimeoutException:
+                 self._z.close( linger = 0 )
+                 self._buildSocket()
+-            except zmq.ZMQError, e:
++            except zmq.ZMQError as e:
+                 self._z.close( linger = 0 )
+                 self._buildSocket()
+             else:
+@@ -537,7 +546,7 @@
+                     data = self._z.recv()
+             except _TimeoutException:
+                 data = False
+-            except zmq.ZMQError, e:
++            except zmq.ZMQError as e:
+                 self._z.close( linger = 0 )
+                 self._buildSocket()
+ 
+@@ -558,7 +567,10 @@
+                         data = None
+ 
+                 if data is not None:
+-                    data = msgpack.unpackb( data, use_list = False )
++                    #data = msgpack.unpackb( data, use_list = False )
++                    unpacker = msgpack.Unpacker( encoding="utf-8", use_list = False )
++                    unpacker.feed( data )
++                    data = unpacker.unpack()
+             return data
+ 
+     def getChild( self ):

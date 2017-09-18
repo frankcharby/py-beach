@@ -33,9 +33,9 @@ import imp
 import hashlib
 import inspect
 import sys
-import urllib2
+import urllib.request, urllib.error, urllib.parse
 import copy
-import Queue
+import queue
 from types import ModuleType
 import syslog
 
@@ -122,7 +122,7 @@ class Actor( gevent.Greenlet ):
 
         try:
             mod = loadModuleFrom( fileName, realm )
-        except urllib2.URLError:
+        except urllib.error.URLError:
             if os.path.isfile( fileName ):
                 raise
             fileName = '%s/%s/__init__.py' % ( initPath, libName )
@@ -135,7 +135,7 @@ class Actor( gevent.Greenlet ):
         if className is not None and className == '*':
             loadModule = mod
             mod = {}
-            for name, val in loadModule.__dict__.iteritems():
+            for name, val in loadModule.__dict__.items():
                 if not name.startswith( '_' ) and type( name ) is not ModuleType:
                     parentGlobals[ name ] = val
                     mod[ name ] = val
@@ -170,7 +170,7 @@ class Actor( gevent.Greenlet ):
         if fileName.startswith( 'file://' ):
             fileName = 'file://%s' % os.path.abspath( fileName[ 7 : ] )
             
-        hUrl = urllib2.urlopen( fileName )
+        hUrl = urllib.request.urlopen( fileName )
         ret = hUrl.read()
         hUrl.close()
         return ret
@@ -262,7 +262,7 @@ class Actor( gevent.Greenlet ):
             # Initially Actors handle one concurrent request to avoid bad surprises
             # by users not thinking about concurrency. This can be bumped up by calling
             # Actor.AddConcurrentHandler()
-            for i in xrange( self._n_initial_concurrent ):
+            for i in range( self._n_initial_concurrent ):
                 self.AddConcurrentHandler()
 
             self.stopEvent.wait()
@@ -690,7 +690,7 @@ class ActorHandle ( object ):
         if newDir is not False:
             self._endpoints = newDir
             if 'affinity' != self._mode:
-                for z_ident, z_url in self._endpoints.items():
+                for z_ident, z_url in list(self._endpoints.items()):
                     if z_ident not in self._peerSockets:
                         # Do this in two steps since creating a socket is blocking so not thread safe in gevent.
                         newSocket = _ZMREQ( z_url, isBind = False, private_key = self._private_key, congestionCB = self._reportCongestion )
@@ -794,7 +794,7 @@ class ActorHandle ( object ):
                             # is not locked, if it changes, affinity is re-computed without migrating
                             # any previous affinities. Therefore, I suggest a good cooldown before
                             # starting to process with affinity after the Actors have been spawned.
-                            orderedEndpoints  = sorted( self._endpoints.items(),
+                            orderedEndpoints  = sorted( list(self._endpoints.items()),
                                                         key = lambda x: x.__getitem__( 0 ) )
                             orderHash = tuple( [ x[ 0 ] for x in orderedEndpoints ] ).__hash__()
                             if self._affinityOrder is None or self._affinityOrder != orderHash:
@@ -811,7 +811,7 @@ class ActorHandle ( object ):
                         else:
                             if 'random' == self._mode:
                                 try:
-                                    endpoints = self._endpoints.keys()
+                                    endpoints = list(self._endpoints.keys())
                                     z_ident = endpoints[ random.randint( 0, len( endpoints ) - 1 ) ]
                                     z = self._peerSockets[ z_ident ]
                                 except:
@@ -894,7 +894,7 @@ class ActorHandle ( object ):
         # Broadcast is inherently very temporal so we assume timeout can be short and without retries.
         self._initialRefreshDone.wait( timeout = 10 )
 
-        for z_ident, z in self._peerSockets.items():
+        for z_ident, z in list(self._peerSockets.items()):
             envelope = copy.deepcopy( envelope )
             envelope[ 'mtd' ][ 'dst' ] = z_ident
             self._threads.add( gevent.spawn( withLogException( self._accountedSend, actor = self._fromActor ), z, z_ident, envelope, 10 ) )
@@ -918,7 +918,7 @@ class ActorHandle ( object ):
 
         self._initialRefreshDone.wait( timeout = self._timeout )
 
-        toSockets = self._peerSockets.items()
+        toSockets = list(self._peerSockets.items())
         futureResults = FutureResults( len( toSockets ) )
         
         for z_ident, z in toSockets:
@@ -999,7 +999,7 @@ class ActorHandle ( object ):
                 pass
             self._fromActor = None
         self._threads.kill()
-        for s in self._peerSockets.values():
+        for s in list(self._peerSockets.values()):
             try:
                 s.close()
             except:
@@ -1134,7 +1134,7 @@ class ActorHandleGroup( object ):
                                                         ident = self._ident,
                                                         fromActor = self._fromActor )
 
-            for cat in self._handles.keys():
+            for cat in list(self._handles.keys()):
                 if cat not in categories:
                     self._handles[ cat ].close()
                     del( self._handles[ cat ] )
@@ -1169,7 +1169,7 @@ class ActorHandleGroup( object ):
             timeout = self._timeout
         self._initialRefreshDone.wait( timeout = timeout )
 
-        for h in self._handles.values():
+        for h in list(self._handles.values()):
             h.shoot( requestType, data, timeout = timeout, key = key, nRetries = nRetries, onFailure = onFailure )
 
     def request( self, requestType, data = {}, timeout = None, key = None, nRetries = None, onFailure = None ):
@@ -1191,7 +1191,7 @@ class ActorHandleGroup( object ):
 
         futureResults = FutureResults( len( self._handles ) )
 
-        for h in self._handles.values():
+        for h in list(self._handles.values()):
             gevent.spawn( withLogException( self._handleAsyncRequest, actor = self._fromActor ), futureResults, h, requestType, data = data, timeout = timeout, key = key, nRetries = nRetries, onFailure = onFailure )
 
         return futureResults
@@ -1213,7 +1213,7 @@ class ActorHandleGroup( object ):
         '''
         self._threads.kill()
         
-        for h in self._handles.values():
+        for h in list(self._handles.values()):
             try:
                 h.close()
             except:
@@ -1231,10 +1231,10 @@ class ActorHandleGroup( object ):
            since a periodic refresh is already at an interval frequent enough for most use.
         '''
         self._refreshCats()
-        for handle in self._handles.values():
+        for handle in list(self._handles.values()):
             handle._updateDirectory( isForced = True )
 
     def getPending( self ):
         '''Get the number of pending requests made by this handle group.
         '''
-        return [ h.getPending() for h in self._handles.values() ]
+        return [ h.getPending() for h in list(self._handles.values()) ]

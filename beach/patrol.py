@@ -25,10 +25,10 @@ import signal
 import gevent
 import gevent.event
 import os
-from sets import Set
+#from sets import Set
 from collections import OrderedDict
 import traceback
-import urllib2
+import urllib.request, urllib.error, urllib.parse
 import hashlib
 
 
@@ -87,9 +87,9 @@ class Patrol ( object ):
         tally = {}
 
         mtd = self._beach.getAllNodeMetadata()
-        for node_mtd in mtd.itervalues():
+        for node_mtd in mtd.values():
             if node_mtd is False: continue
-            for aid, actor_mtd in node_mtd.get( 'data', {} ).get( 'mtd', {} ).iteritems():
+            for aid, actor_mtd in node_mtd.get( 'data', {} ).get( 'mtd', {} ).items():
                 if self._stopEvent.wait( 0 ): break
                 owner = actor_mtd.get( 'owner', None )
                 if owner in self._entries:
@@ -109,7 +109,7 @@ class Patrol ( object ):
         else:
             currentScale = None
 
-        for actorEntry in self._entries.itervalues():
+        for actorEntry in self._entries.values():
             if self._stopEvent.wait( 0 ): break
             actorName = actorEntry.name
             current = existing.get( actorName, 0 )
@@ -213,7 +213,7 @@ class Patrol ( object ):
                 self._mutex.release()
                 continue
             self._log( 'found %d actors, testing for %d' % ( len( directory[ 'reverse' ] ), len( self._watch ) ) )
-            for actorId in self._watch.keys():
+            for actorId in list(self._watch.keys()):
                 if self._stopEvent.wait( 0 ): break
                 if actorId not in directory.get( 'reverse', {} ):
                     self._log( 'actor %s has fallen' % actorId )
@@ -229,7 +229,7 @@ class Patrol ( object ):
 
             record = self._entries[ k ]
 
-            for uid, entry in self._watch.items():
+            for uid, entry in list(self._watch.items()):
                 if entry == record:
                     del( self._watch[ uid ] )
                     removed.append( uid )
@@ -237,8 +237,8 @@ class Patrol ( object ):
             if isStopToo:
                 self._beach.stopActors( withId = removed )
         else:
-            if self._beach.stopActors( withId = self._watch.keys() ):
-                removed = self._watch.keys()
+            if self._beach.stopActors( withId = list(self._watch.keys()) ):
+                removed = list(self._watch.keys())
                 self._watch = {}
 
         return removed
@@ -248,7 +248,7 @@ class Patrol ( object ):
             patrolFilePath = url
             if patrolFilePath.startswith( 'file://' ):
                 patrolFilePath = 'file://%s' % os.path.abspath( patrolFilePath[ len( 'file://' ) : ] )
-            patrolFile = urllib2.urlopen( patrolFilePath )
+            patrolFile = urllib.request.urlopen( patrolFilePath )
         else:
             patrolFilePath = os.path.abspath( url )
             patrolFile = open( patrolFilePath, 'r' )

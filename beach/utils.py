@@ -22,11 +22,15 @@ from gevent.event import Event
 import gevent.queue
 import zmq.green as zmq
 import netifaces
-from prefixtree import PrefixDict
+
+# We need to pick, pygtrie seems more active
+from beach.prefixtree import PrefixDict
+#from pygtrie import StringTrie as PrefixDict
+
 import msgpack
 import hashlib
 import imp
-import urllib2
+import urllib.request, urllib.error, urllib.parse
 import sys
 import os
 import warnings
@@ -49,7 +53,7 @@ def loadModuleFrom( path, realm ):
             path = 'file://%s' % os.path.abspath( path[ 7 : ] )
         name = path[ path.rfind( '/' ) + 1 : ]
         name = name if not name.endswith( '.py' ) else name[ : -3 ]
-        hUrl = urllib2.urlopen( path )
+        hUrl = urllib.request.urlopen( path )
         content = hUrl.read()
         hUrl.close()
         modHash = hashlib.sha1( content ).hexdigest()
@@ -85,15 +89,15 @@ def _sanitizeJson( obj ):
             value = str( value )
         elif type( value ) is datetime.datetime:
             value = value.strftime( '%Y-%m-%d %H:%M:%S' )
-        elif value is not None and type( value ) not in ( str, unicode, bool, int, float ):
+        elif value is not None and type( value ) not in ( str, str, bool, int, float ):
             value = str( value )
         return value
     
     def _sanitizeJsonStruct( obj ):
         if issubclass( type( obj ), dict ) or type( obj ) is PrefixDict:
             data = {}
-            for key, value in obj.iteritems():
-                if type( key ) not in ( str, unicode, bool, int, float, tuple ):
+            for key, value in obj.items():
+                if type( key ) not in ( str, str, bool, int, float, tuple ):
                     key = str( key )
                 try:
                     data[ key ] = _sanitizeJsonStruct( value )
@@ -208,9 +212,9 @@ class _ZSocket( object ):
                 self.s.send( data )
         except _TimeoutException:
             self._rebuildIfNecessary()
-        except zmq.ZMQError, e:
+        except zmq.ZMQError as e:
             self._buildSocket()
-        except Exception, e:
+        except Exception as e:
             self._buildSocket()
         else:
             isSuccess = True
@@ -231,7 +235,7 @@ class _ZSocket( object ):
                 data = self.s.recv()
         except _TimeoutException:
             self._rebuildIfNecessary()
-        except zmq.ZMQError, e:
+        except zmq.ZMQError as e:
             self._buildSocket()
 
         if data is not None and data is not False:
@@ -251,7 +255,10 @@ class _ZSocket( object ):
                     data = None
 
             if data is not None:
-                data = msgpack.unpackb( data, use_list = False )
+                #data = msgpack.unpackb( data, use_list = False )
+                unpacker = msgpack.Unpacker( encoding="utf-8", use_list = False )
+                unpacker.feed( data )
+                data = unpacker.unpack()
 
         return data
     
@@ -409,7 +416,10 @@ class _ZMREQ ( object ):
                             result = None
 
                     if result is not None:
-                        result = msgpack.unpackb( result, use_list = False )
+                        #result = msgpack.unpackb( result, use_list = False )
+                        unpacker = msgpack.Unpacker( encoding="utf-8", use_list = False )
+                        unpacker.feed( result )
+                        result = unpacker.unpack()
 
         except _TimeoutException:
             z.close( linger = 0 )
@@ -519,7 +529,7 @@ class _ZMREP ( object ):
             except _TimeoutException:
                 self._z.close( linger = 0 )
                 self._buildSocket()
-            except zmq.ZMQError, e:
+            except zmq.ZMQError as e:
                 self._z.close( linger = 0 )
                 self._buildSocket()
             else:
@@ -537,7 +547,7 @@ class _ZMREP ( object ):
                     data = self._z.recv()
             except _TimeoutException:
                 data = False
-            except zmq.ZMQError, e:
+            except zmq.ZMQError as e:
                 self._z.close( linger = 0 )
                 self._buildSocket()
 
@@ -558,7 +568,10 @@ class _ZMREP ( object ):
                         data = None
 
                 if data is not None:
-                    data = msgpack.unpackb( data, use_list = False )
+                    #data = msgpack.unpackb( data, use_list = False )
+                    unpacker = msgpack.Unpacker( encoding="utf-8", use_list = False )
+                    unpacker.feed( data )
+                    data = unpacker.unpack()
             return data
 
     def getChild( self ):

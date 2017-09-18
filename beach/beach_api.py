@@ -18,7 +18,8 @@ import sys
 if 'threading' in sys.modules and 'sphinx' not in sys.modules:
     import gevent.monkey
     if 0 == len( gevent.monkey.saved ):
-        raise Exception('threading module loaded before patching!')
+        pass
+        #raise Exception('threading module loaded before patching!')
 import gevent.monkey
 gevent.monkey.patch_all()
 
@@ -41,7 +42,7 @@ from beach.utils import _getIpv4ForIface
 from beach.utils import _getPublicInterfaces
 
 def eprint( msg ):
-    print >> sys.stderr, msg
+    print(msg, file=sys.stderr)
 
 class Beach ( object ):
 
@@ -74,11 +75,13 @@ class Beach ( object ):
             key_path = os.path.join( os.path.dirname( os.path.abspath( configFile ) ), self._private_key )
             with open( key_path, 'r' ) as f:
                 self._private_key = f.read()
-                print( "Using shared key: %s" % key_path )
+                print(( "Using shared key: %s" % key_path ))
 
         self._admin_token = self._configFile.get( 'admin_token', None )
 
         if 0 == len( self._seedNodes ):
+            # FIX - review
+            mainIfaceIp = None
             if 'interface' not in self._configFile:
                 defaultInterfaces = _getPublicInterfaces()
                 mainIfaceIp = None
@@ -86,7 +89,9 @@ class Beach ( object ):
                     interface = defaultInterfaces.pop()
                     mainIfaceIp = _getIpv4ForIface( interface )
             if mainIfaceIp is None:
-                self._log( "Failed to use interface %s." % self.interface )
+                # FIX - where is this?
+                #self._log( "Failed to use interface %s." % self.interface )
+                pass
             self._seedNodes.append( mainIfaceIp )
 
         for s in self._seedNodes:
@@ -97,9 +102,9 @@ class Beach ( object ):
 
         self._isInited.wait( 5 )
 
-        ActorHandle._setHostDirInfo( [ 'tcp://%s:%d' % ( x, self._opsPort ) for x in self._nodes.keys() ],
+        ActorHandle._setHostDirInfo( [ 'tcp://%s:%d' % ( x, self._opsPort ) for x in list(self._nodes.keys()) ],
                                      private_key = self._private_key )
-        ActorHandleGroup._setHostDirInfo( [ 'tcp://%s:%d' % ( x, self._opsPort ) for x in self._nodes.keys() ],
+        ActorHandleGroup._setHostDirInfo( [ 'tcp://%s:%d' % ( x, self._opsPort ) for x in list(self._nodes.keys()) ],
                                           private_key = self._private_key )
 
     def _connectToNode( self, host, isSeed = False ):
@@ -123,11 +128,11 @@ class Beach ( object ):
         try:
             while True:
                 srcNodeIndex = random.randint( 0, len( self._nodes ) - 1 )
-                srcNodeKey = self._nodes.keys()[ srcNodeIndex ]
+                srcNodeKey = list(self._nodes.keys())[ srcNodeIndex ]
                 toQuery = self._nodes[ srcNodeKey ][ 'socket' ]
                 nodes = toQuery.request( { 'req' : 'get_nodes' }, timeout = 10 )
                 if isMessageSuccess( nodes ):
-                    for k in nodes[ 'data' ][ 'nodes' ].keys():
+                    for k in list(nodes[ 'data' ][ 'nodes' ].keys()):
                         if k not in self._nodes:
                             self._connectToNode( k )
                 elif not self._nodes[ srcNodeKey ][ 'is_seed' ]:
@@ -137,7 +142,7 @@ class Beach ( object ):
                         nodeInfo[ 'socket' ].close()
                     continue
 
-                for nodeName, node in self._nodes.items():
+                for nodeName, node in list(self._nodes.items()):
                     newInfo = self._getHostInfo( node[ 'socket' ] )
                     if newInfo is not None:
                         self._nodes[ nodeName ][ 'info' ] = newInfo
@@ -226,42 +231,42 @@ class Beach ( object ):
 
         thisRealm = realm if realm is not None else self._realm
 
-        if type( category ) is str or type( category ) is unicode:
+        if type( category ) is str or type( category ) is str:
             category = ( category, )
 
         if 'random' == strategy or strategy is None:
-            node = self._nodes.values()[ random.randint( 0, len( self._nodes ) - 1 ) ][ 'socket' ]
+            node = list(self._nodes.values())[ random.randint( 0, len( self._nodes ) - 1 ) ][ 'socket' ]
         elif 'resource' == strategy:
             # For now the simple version of this strategy is to just average the CPU and MEM %.
-            node = min( self._nodes.values(), key = lambda x: ( sum( x[ 'info' ][ 'cpu' ] ) /
+            node = min( list(self._nodes.values()), key = lambda x: ( sum( x[ 'info' ][ 'cpu' ] ) /
                                                                 len( x[ 'info' ][ 'cpu' ] ) +
                                                                 x[ 'info' ][ 'mem' ] ) / 2 )[ 'socket' ]
         elif 'affinity' == strategy:
-            nodeList = self._dirCache.get( strategy_hint, {} ).values()
+            nodeList = list(self._dirCache.get( strategy_hint, {} ).values())
             population = {}
             for n in nodeList:
                 name = n.split( ':' )[ 1 ][ 2 : ]
                 population.setdefault( name, 0 )
                 population[ name ] += 1
             if 0 != len( population ):
-                affinityNode = population.keys()[ random.randint( 0, len( population ) - 1 ) ]
+                affinityNode = list(population.keys())[ random.randint( 0, len( population ) - 1 ) ]
                 node = self._nodes[ affinityNode ].get( 'socket', None )
                 # We create a temporary entry to allow us to do multiple Add in a row
                 for cat in category:
                     self._dirCache.setdefault( cat, {} )[ str(uuid.uuid4()) ] = '%s:XXXX' % affinityNode
             else:
                 # There is nothing in play, fall back to random
-                node = self._nodes.values()[ random.randint( 0, len( self._nodes ) - 1 ) ][ 'socket' ]
+                node = list(self._nodes.values())[ random.randint( 0, len( self._nodes ) - 1 ) ][ 'socket' ]
         elif 'host_affinity' == strategy:
             node = self._nodes.get( strategy_hint, None )
             if node is not None:
                 node = node[ 'socket' ]
         elif 'repulsion' == strategy:
-            possibleNodes = self._nodes.keys()
+            possibleNodes = list(self._nodes.keys())
 
             if strategy_hint is None:
                 strategy_hint = category[ 0 ]
-            nodeList = self._dirCache.get( strategy_hint, {} ).values()
+            nodeList = list(self._dirCache.get( strategy_hint, {} ).values())
 
             for n in nodeList:
                 name = n.split( ':' )[ 1 ][ 2 : ]
@@ -276,14 +281,14 @@ class Beach ( object ):
                     self._dirCache.setdefault( cat, {} )[ str(uuid.uuid4()) ] = 'tcp://%s:XXXX' % affinityNode
             else:
                 # There is nothing in play, fall back to random
-                node = self._nodes.values()[ random.randint( 0, len( self._nodes ) - 1 ) ][ 'socket' ]
+                node = list(self._nodes.values())[ random.randint( 0, len( self._nodes ) - 1 ) ][ 'socket' ]
         elif 'roundrobin' == strategy:
             if 0 != len( self._nodes ):
                 curI = ( self._lastAddActorNode + 1 ) if self._lastAddActorNode is not None else 0
                 if curI >= len( self._nodes ):
                     curI = 0
                 self._lastAddActorNode = curI
-                node = self._nodes.values()[ curI ][ 'socket' ]
+                node = list(self._nodes.values())[ curI ][ 'socket' ]
 
         if node is not None:
             info = { 'req' : 'start_actor',
@@ -309,6 +314,10 @@ class Beach ( object ):
                 info[ 'logdest' ] = log_dest
             if self._admin_token is not None:
                 info[ 'admin_token' ] = self._admin_token
+            
+            #print(node)
+            print(info)
+            
             resp = node.request( info, timeout = 30 )
 
         return resp
@@ -320,7 +329,7 @@ class Beach ( object ):
 
         :returns: the realm directory of the cluster
         '''
-        node = self._nodes.values()[ random.randint( 0, len( self._nodes ) - 1 ) ][ 'socket' ]
+        node = list(self._nodes.values())[ random.randint( 0, len( self._nodes ) - 1 ) ][ 'socket' ]
         resp = node.request( { 'req' : 'get_full_dir' }, timeout = timeout )
         if isMessageSuccess( resp ):
             resp = resp[ 'data' ]
@@ -338,7 +347,7 @@ class Beach ( object ):
         req = { 'req' : 'flush' }
         if self._admin_token is not None:
             req[ 'admin_token' ] = self._admin_token
-        for node in self._nodes.values():
+        for node in list(self._nodes.values()):
             resp = node[ 'socket' ].request( req, timeout = 30 )
             if not isMessageSuccess( resp ):
                 isFlushed = False
@@ -387,16 +396,16 @@ class Beach ( object ):
                 if not isinstance( withCategory, collections.Iterable ):
                     withCategory = ( withCategory, )
                 for cat in withCategory:
-                    for realmCat in tmpDir[ 'realms' ].get( self._realm, {} ).keys():
+                    for realmCat in list(tmpDir[ 'realms' ].get( self._realm, {} ).keys()):
                         if realmCat.startswith( cat ):
-                            toRemove += tmpDir[ 'realms' ].get( self._realm, {} ).get( realmCat, {} ).keys()
+                            toRemove += list(tmpDir[ 'realms' ].get( self._realm, {} ).get( realmCat, {} ).keys())
 
             # We take the easy way out for now by just spamming the kill to every node.
             isSuccess = {}
             req = { 'req' : 'kill_actor', 'uid' : toRemove }
             if self._admin_token is not None:
                 req[ 'admin_token' ] = self._admin_token
-            for k, node in self._nodes.items():
+            for k, node in list(self._nodes.items()):
                 resp = node[ 'socket' ].request( req, timeout = 30 )
                 isSuccess[ k ] = resp
                 if delay is not None:
@@ -411,7 +420,7 @@ class Beach ( object ):
         '''
         health = {}
 
-        for name, node in self._nodes.items():
+        for name, node in list(self._nodes.items()):
             health[ name ] = node[ 'info' ]
 
         return health
@@ -423,7 +432,7 @@ class Beach ( object ):
         '''
         load = {}
 
-        for node in self._nodes.values():
+        for node in list(self._nodes.values()):
             resp = node[ 'socket' ].request( { 'req' : 'get_load_info' }, timeout = 30 )
             if isMessageSuccess( resp ):
                 load.update( resp[ 'data' ][ 'load' ] )
@@ -436,7 +445,7 @@ class Beach ( object ):
         :returns: the metadata of nodes of the cluster
         '''
         mtd = {}
-        for nodename, node in self._nodes.items():
+        for nodename, node in list(self._nodes.items()):
             mtd[ nodename ] = node[ 'socket' ].request( { 'req' : 'get_full_mtd' }, timeout = 10 )
 
         return mtd
@@ -473,7 +482,7 @@ class Beach ( object ):
         if self._admin_token is not None:
             req[ 'admin_token' ] = self._admin_token
 
-        for node in self._nodes.values():
+        for node in list(self._nodes.values()):
             resp = node[ 'socket' ].request( req, timeout = 30 )
             if isMessageSuccess( resp ):
                 isSuccess = True
@@ -495,7 +504,7 @@ class Beach ( object ):
         if self._admin_token is not None:
             req[ 'admin_token' ] = self._admin_token
 
-        for node in self._nodes.values():
+        for node in list(self._nodes.values()):
             resp = node[ 'socket' ].request( req, timeout = 30 )
             if isMessageSuccess( resp ):
                 isSuccess = True
