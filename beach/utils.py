@@ -34,6 +34,8 @@ import hashlib
 #import imp
 import tempfile
 from importlib import machinery
+import syslog
+import traceback
 
 import urllib.request, urllib.error, urllib.parse
 import sys
@@ -69,7 +71,12 @@ def loadModuleFrom( path, realm ):
             f = tempfile.NamedTemporaryFile("wb")
             f.write(content)
             f.flush()
-            mod = machinery.SourceFileLoader(name, f.name).load_module()
+            try:
+                mod = machinery.SourceFileLoader(name, f.name).load_module()
+            except:
+                syslog.syslog( name )
+                syslog.syslog( traceback.format_exc() )
+                raise Exception("Import error!")
             f.close()
             mod.__dict__[ '_beach_path' ] = path
             mod.__dict__[ '__file__' ] = path
